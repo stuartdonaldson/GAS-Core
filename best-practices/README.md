@@ -1,0 +1,43 @@
+# Best Practices
+
+Reusable patterns and tools derived from working implementations in active projects. Each folder contains:
+
+- A `README.md` with architecture overview, annotated examples, setup instructions, and trade-offs
+- Copies of reusable tools or scripts that can be used as a starting point in a new project
+
+---
+
+## Index
+
+| Folder | Pattern | Source |
+|---|---|---|
+| [`gas-server-logging/`](gas-server-logging/README.md) | GAS server-side logging to Google Drive, read by dev tooling via Drive for Desktop | AudioTrackCombiner |
+| [`gas-playwright-testing/`](gas-playwright-testing/README.md) | Playwright testing for GAS web apps: nested iframe navigation, auth, console capture | AudioTrackCombiner |
+| [`gas-deployment/`](gas-deployment/README.md) | Clasp-based deployment management: stable TEST/PROD URLs, version stamping | AudioTrackCombiner |
+| [`gas-cm-and-deployment/`](gas-cm-and-deployment/README.md) | Configuration management + release workflow: npm version, git tags, post-release bump, deploy stamp | AudioTrackCombiner v1.6+ |
+| [`google-sheet-verification/`](google-sheet-verification/README.md) | Verify Google Sheet content by downloading as xlsx via Drive export URL | WingTools/WingReportGAS |
+| [`gas-email-templating/`](gas-email-templating/README.md) | HTML email templating with HtmlService scriptlets, delivery policy (test-mode redirect + Drive audit record), XSS safety | F3Go30 |
+| [`gas-acceptance-testing/`](gas-acceptance-testing/README.md) | End-to-end acceptance/scenario testing of a GAS app from Python: entry-point-as-call-site technique (incl. single-shot scheduled triggers), `run_fixture` dispatcher, completion-signal + artifact download, doc-scoped isolation, 6-min batching. GAS stack adapter for DevStandard `atdd-bdd.md`. | GActionSheet |
+| [`gas-test-reporting/`](gas-test-reporting/README.md) | Allure test reporting for projects with pytest + Playwright: per-run isolation, deployment stamping via ledger, history trends, failure categorisation, WSL2 serve, smoke test pattern. | GActionSheet |
+
+---
+
+## Noted Patterns (not yet elevated)
+
+Patterns observed in the same projects that may be worth full documentation if they recur in a third project.
+
+| Pattern | Summary | Source |
+|---|---|---|
+| Unit testing GAS `.js.html` source in Node.js | Strips the `<script>` wrapper at test time with a regex, evaluates the source via `new Function`, and uses a dual-export guard (`if (typeof module !== 'undefined') module.exports = ...`) so the same file works as a GAS HtmlService include and a Node.js unit-testable module. No build step. Uses Node's built-in `node:test` runner. | `AudioTrackCombiner/tests/unit/` |
+| JSON serialization contract / round-trip validation | Locks the exact serialization settings as a named constant, then asserts that `load → dump → reload` produces bit-identical floats, preserves key ordering, and leaves unrelated fields untouched across a corpus of real asset files. Catches silent data corruption from serialization drift before it propagates. | `WingTools/WingLoad2/tests/test_snap_round_trip.py` |
+
+---
+
+## When to Use These
+
+These are proven patterns, not mandates. Apply them when:
+- You are starting a new GAS project and face the same challenge
+- You want a reference implementation before designing your own solution
+- You are adapting an existing project to add testing or deployment automation
+
+Each pattern is independently adoptable — you do not need all four for any given project.

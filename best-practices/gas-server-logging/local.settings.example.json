@@ -1,0 +1,25 @@
+{
+  "_instructions": [
+    "Copy this file to local.settings.json (gitignored) and fill in your values.",
+    "",
+    "You must also set the corresponding GAS script properties in the Apps Script editor:",
+    "  Apps Script → Project Settings → Script Properties → Add property",
+    "",
+    "  INITIAL_FOLDER_ID     = same value as initialFolderId below",
+    "  GAS_LOGGER_FOLDER_ID  = Drive folder ID of the folder referenced by gasLogDir below",
+    "",
+    "To find a Drive folder ID: open the folder in Google Drive,",
+    "copy the alphanumeric ID from the URL:",
+    "  https://drive.google.com/drive/folders/<FOLDER_ID_HERE>",
+    "",
+    "gasLogDir must be the local filesystem path where Google Drive for Desktop",
+    "maps the GAS_LOGGER_FOLDER_ID folder.",
+    "",
+    "initialFolderPath must be the local filesystem path where Google Drive for Desktop",
+    "maps the INITIAL_FOLDER_ID folder. Used by Playwright tests to determine which",
+    "subfolder actually contains audio tracks, avoiding empty or archive folders."
+  ],
+  "initialFolderId": "DRIVE_FOLDER_ID_OF_ROOT_AUDIO_FOLDER",
+  "initialFolderPath": "/path/to/locally/mapped/initial/folder",
+  "gasLogDir": "/path/to/locally/mapped/log-folder"
+}
