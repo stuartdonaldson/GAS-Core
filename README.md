@@ -23,4 +23,7 @@ branch this repo, make the change, bump the version, and re-sync consumers.
 - `libs/LibSheets/` seeded from the most mature copy found across projects
   (`GApps/apps/Groups-Users/scripts/libSheets.js`); other project copies are
   not yet migrated to consume this version — see `libs/LibSheets/CHANGELOG.md`.
+- `libs/LibSidebar/` seeded from `GApps/libraries/LibSidebar/` (notification
+  sidebar for Sheets); `F3Go30` has a forked copy not yet migrated — see
+  `libs/LibSidebar/CHANGELOG.md`.
 - Submodule wiring + drift-check tooling for consumer projects is not yet built.
