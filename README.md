@@ -12,10 +12,24 @@ the former `GAS-Practices` folder (now a redirect — see its README).
 
 ## Consuming `libs/` from an app project
 
-Each lib has its own `CHANGELOG.md` with a version number. Consumer projects
-vendor a copy in (or, once wired up, a git submodule pinned to a tagged commit)
-and record the version pulled. Do not hand-edit a vendored copy in place —
-branch this repo, make the change, bump the version, and re-sync consumers.
+Each lib has its own `CHANGELOG.md`/version tag (e.g. `libsheets-v1.0.0`) and
+a `CONSUMERS.md` registry. Setup for a consumer project:
+
+1. `git submodule add <this-repo> vendor/gas-core`
+2. `cd vendor/gas-core && git checkout libsheets-v1.0.0 && cd -` then commit
+   the submodule pin.
+3. Copy the needed file into the clasp script directory (clasp doesn't
+   resolve submodule paths, so it needs a flat copy where it expects files):
+   `cp vendor/gas-core/libs/LibSheets/libSheets.js script/libSheets.js`
+4. Add a line to a local pairs-file (e.g. `vendor/gas-core-pairs.txt`):
+   `libs/LibSheets/libSheets.js  script/libSheets.js`
+5. Run `vendor/gas-core/scripts/check-lib-drift.sh vendor/gas-core vendor/gas-core-pairs.txt`
+   before every push (wire into a pre-push hook or CI) — it fails if the
+   submodule isn't cleanly pinned or the vendored copy has drifted.
+
+Do not hand-edit the vendored copy in place — the drift check will catch it.
+Branch GAS-Core, make the change there, bump the version/tag, then re-pin and
+re-copy in the consumer.
 
 ## Status
 
