@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "GAS_Core",
+  "project_id": "bb3f6a6b-83ab-49a9-a0eb-08cbfb127791"
+}
