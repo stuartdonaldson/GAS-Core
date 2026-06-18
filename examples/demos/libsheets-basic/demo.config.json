@@ -1,0 +1,4 @@
+{
+  "host": "sheet",
+  "uses": ["LibSheets"]
+}

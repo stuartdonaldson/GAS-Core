@@ -8,6 +8,111 @@ Status: draft, iterating toward implementation.
 > were re-checked against source on 2026-06-17; if the cited code moves, the
 > claim must be re-verified.
 
+---
+
+> ## ⚠️ Design revision — 2026-06-18: per-library harnesses (supersedes the shared aggregator)
+>
+> **Decision.** Drop the single shared integration aggregator
+> (`examples/integrated/test-harness/`, §4.2) in favour of **one standalone
+> harness per library**. Each `libs/<Name>/` carries its own small clasp
+> harness — a bound test Sheet/Doc, its own `onOpen()`/`doGet()`, and a plain
+> top-level `const demos = [...]` — deployed and demoed on its own.
+>
+> **Why.** The aggregator hosts every library's `demo.js` in one clasp project,
+> but the GAS V8 runtime loads every file in a project into **one shared global
+> scope** with no `require()`. That single fact forced a chain of machinery
+> whose only payoff was "show all libraries at one URL":
+> - `HARNESS_DEMOS_` namespacing (to avoid colliding `const demos`);
+> - vendoring each `harness/demo.js` into the aggregator's `vendor/` tree;
+> - `scripts/copy-demo-files.sh` *generating* each vendored copy (canonical body
+>   + a spliced registration tail) via embedded string-surgery;
+> - `scripts/check-lib-drift.sh` intra-repo mode + regen-command field +
+>   pairs-file, purely to police a generated file against its own generator.
+>
+> The cost did not buy the thing demos are *for*: the per-feature interactive
+> menu click (`runMenuDemo_`, `Code.js:270`) is a non-functional no-op — GAS
+> menu items cannot carry arguments and V8 cannot generate named handlers
+> dynamically, so the aggregator only ever offered "run all" + a `doGet`
+> automation route, not click-to-run-one-feature. A per-library harness is a
+> single small file, so its menu items *can* each bind a hand-written named
+> handler — the interactive demo experience actually works.
+>
+> **What this changes below.** §2 goals, §4.0 layout, §4.2 (aggregator), §4.3
+> framing (no `HARNESS_DEMOS_` / no vendoring), §4.4 scoping (per-lib `doGet`,
+> not aggregator routing), §6/§6.1 (the no-core-change proof is moot — there is
+> no shared core), and §8 phasing are all revised or superseded by this
+> decision. Sections kept verbatim where still correct: §4.1 per-library layout,
+> §4.5 tiering, §3 non-goals.
+>
+> **What is unaffected and retained.** Tier 1 `node --test` on pure helpers (the
+> regression net) and the **production-consumer** submodule + flat-copy +
+> `check-lib-drift.sh` mechanism (anti-fork for real `libSheets.js` across
+> consumers, `README.md` §"Consuming libs/") — both are independent of the demo
+> harness and stay as-is.
+>
+> Tracking: bd memory `test-demo-harness-architecture-pivot-2026-06-18`; epic
+> `GAS-Core-pos`.
+
+> ### Follow-on refinement — 2026-06-18b/c: hybrid (co-located demo logic + shared wrapper + composed deployable demos)
+>
+> The unit of **deployment** is a *demo* that composes **one or more** libraries
+> (examples: `libsheets-basic` uses `LibSheets`; `libsheets-with-notifications`
+> uses `LibSheets` + `LibSidebar`; no sidebar-only demo — demos are authored as
+> needed). But the unit of **authoring** is co-located with the library, so a
+> contributor adding a feature touches only `libs/<Name>/`:
+>
+> - **Demo logic lives WITH the library:** `libs/<Name>/<name>Demo.js` declares a
+>   library-prefixed manifest + named demo functions, e.g.
+>   `var LIBSHEETS_DEMOS = [{ name: 'Demo Sheets', demo: 'libSheets_sheetDemo' }];`
+>   plus `function libSheets_sheetDemo() { var ss = Harness.getSheet(); … }`. So
+>   `libs/<Name>/` holds production code + `test/` + `<name>Demo.js`.
+> - **A small shared wrapper** (`examples/demo-harness/`) is pushed with every
+>   demo and provides environment + plumbing: `Harness.getSheet()` (bound active
+>   sheet, or a sheet resolved by id), the `onOpen()` menu builder, and the
+>   `doGet()` router. It builds menus by iterating each loaded library's
+>   `<LIB>_DEMOS` and binding `menu.addItem(name, e.demo)`.
+> - **A demo is a thin composition declaration:** `examples/demos/<demo>/
+>   demo.config.json = { host, uses[] }` (+ optional cross-library glue
+>   `Code.js`). Single-library demos need little or nothing here.
+>
+> **Why the menu now actually works (the aggregator's worst defect, fixed).** The
+> aggregator stored demos as anonymous `entryPoint:(ctx)=>{}` closures in a data
+> array — a GAS menu item cannot bind to those (it binds a *named* zero-arg
+> global). Here `demo` is a **string naming a real global function**, so
+> `menu.addItem(name, 'libSheets_sheetDemo')` binds and click-to-run works. The
+> environment arrives via the `Harness.getSheet()` accessor, not a click
+> argument, so demo functions stay zero-arg and bindable.
+>
+> **Reusable hosts + push tool.** A small fixed set of clasp host projects, keyed
+> by container type (`sheet`, `doc`, `standalone` if needed), is owned once;
+> scriptIds live in `libs/harness-hosts.json`. `scripts/push-demo.sh <demo>`
+> reads `demo.config.json`, assembles the shared wrapper + each `uses` library's
+> source (`libs/<Name>/*.js`) + each library's `<name>Demo.js` into a temp dir,
+> and `clasp push`es to the host for its `host` kind. One demo live per host at a
+> time ("push only the demo we want").
+>
+> **Still not the aggregator.** Only the chosen demo's libraries load into a
+> host's global scope, so there is no demo vendoring and no drift check for
+> demos. The `<LIB>_DEMOS` registry is fine — the registry was never the problem;
+> vendoring + always-all-libs + non-bindable closures were, and all three stay
+> gone. Composing two libraries is safe: `libName_`-prefixed manifests/functions
+> don't collide (the rejected collision was many files each declaring a bare
+> `const demos`).
+>
+> **Trade-offs (accepted):** authoring a *new composed* demo still touches
+> `examples/demos/<demo>/` (composition is inherently cross-library); demo
+> function names must be `libName_`-prefixed; the wrapper is shared infrastructure
+> with a small stable contract. Also: demo functions currently embedded in the
+> vendored `libSheets.js` (lines ~43–144) must be extracted to
+> `libs/LibSheets/libSheetsDemo.js` — which also removes demo bloat from the
+> vendored production file.
+>
+> Supersedes below: §2 goals, §4.0/§4.1 layout, §4.3 contract, §8 phasing.
+> Tracking: bd memory `test-demo-harness-hybrid-model-2026-06-18` (authoritative;
+> supersedes the two earlier harness memories).
+
+---
+
 ## 1. Context
 
 GAS-Core hosts canonical, versioned libraries (`libs/`) consumed by multiple
@@ -26,20 +131,27 @@ library.
 
 ## 2. Goals
 
-- Every library has at least one **deployable example**: standalone
-  (no bound resource), bound (runs against a real test Sheet/Doc), or both.
-- Libraries can be demoed **together** in one integrated add-on deployment,
-  not just individually.
-- Library code, its tests, and its demo/menu wiring **live together** in
-  `libs/<Name>/`, so a consumer who vendors the library can also vendor (or
-  at least see) its tests and demos, and a PR improving the library naturally
-  carries matching test/demo updates in the same diff.
-- Test/demo execution is **scoped**: run everything, run one library, or run
-  one feature within one library — at whichever tier (see §4) is being used.
-- Adding a new library means adding files under `libs/<NewLib>/`; it must
-  **not** require changes to a shared harness's core logic.
-- A failing demo/test in one library must not prevent other libraries'
-  demos/tests from running (no single point of failure in the aggregator).
+(Revised per the 2026-06-18b/c hybrid refinement.)
+
+- There is at least one **deployable demo** per capability worth showing. A demo
+  composes one or more libraries and runs against the appropriate reusable host
+  (bound Sheet/Doc, or standalone). Demos are authored as needed — not one per
+  library.
+- A demo is deployed and demoed **on its own**: `push-demo <demo>` loads exactly
+  that demo (and only the libraries it `uses`) into a host, so a person opens it,
+  sees those features, and clicks to run one (working per-feature menu items).
+- **Adding a feature's demo touches only `libs/<Name>/`.** A library's demo logic
+  is co-located with its code: production + Tier 1 `test/` + `<name>Demo.js` all
+  live in `libs/<Name>/`. A contributor need not check out or edit the wider demo
+  tree to add a demo for the feature they just wrote.
+- A demo's *composition* (which libraries, which host) is declared separately in
+  `examples/demos/<demo>/demo.config.json`; the shared wrapper in
+  `examples/demo-harness/` supplies the runtime environment (e.g. the sheet) and
+  the menu/`doGet` plumbing so libraries don't reimplement it.
+- Test/demo execution is **scoped within a demo**: run all of a demo's features
+  or one feature, at whichever tier (§4) is being used.
+- A failing demo is inherently isolated — each demo is its own push to its own
+  host, so there is no shared single point of failure to guard against.
 
 ## 3. Non-goals
 
@@ -56,56 +168,88 @@ library.
 
 ### 4.0 Repo layout (overview)
 
+Revised per the 2026-06-18b/c hybrid decision: a library carries its own demo
+logic (`<name>Demo.js`) next to its production code + `test/`; a shared wrapper
+(`examples/demo-harness/`) supplies environment + menu/`doGet`; `examples/demos/`
+holds thin composition configs; the push tool assembles wrapper + chosen demo's
+`uses` libraries (source + `<name>Demo.js`) and pushes to a reusable host.
+
 ```mermaid
 graph TD
   root["GAS-Core/"]
   root --> pkg["package.json (dev-only: node --test runner config)<br/>NOT vendored"]
   root --> bp["best-practices/<br/>methodology docs"]
-  root --> scripts["scripts/check-lib-drift.sh<br/>existing vendoring guard"]
+  root --> drift["scripts/check-lib-drift.sh<br/>production-consumer vendoring guard"]
+  root --> push["scripts/push-demo.sh<br/>assemble wrapper + demo's uses[] libs → clasp push to host"]
+  root --> hosts["libs/harness-hosts.json<br/>host scriptIds: {sheet, doc, standalone}"]
   root --> libs["libs/"]
-  root --> ex["examples/integrated/test-harness/<br/>shared aggregator"]
+  root --> wrap["examples/demo-harness/<br/>shared wrapper: Harness.getSheet(), onOpen menu, doGet"]
+  root --> demos["examples/demos/"]
 
   libs --> ls["libs/LibSheets/"]
-  ls --> lsprod["libSheets.js (production — vendored)"]
+  ls --> lsprod["libSheets.js (production — vendored to consumers)"]
   ls --> lstest["test/libSheets.test.js (Tier 1)"]
-  ls --> lsharn["harness/demo.js (registration module §4.3)"]
-  ls --> lsbound["harness/bound-sheet/ (optional clasp project, Tier 2)"]
+  ls --> lsdemo["libSheetsDemo.js (LIBSHEETS_DEMOS manifest + named demo fns)"]
+  libs --> lsb["libs/LibSidebar/ (+ libSidebarDemo.js)"]
 
-  ex --> exclasp[".clasp.json + appsscript.json"]
-  ex --> excode["Code.js — onOpen()+doGet() aggregator only"]
-  ex --> exvendor["vendor/ — flat copies of each lib's harness/demo.js"]
+  demos --> d1["libsheets-basic/<br/>demo.config.json {host:sheet, uses:[LibSheets]}"]
+  demos --> d2["libsheets-with-notifications/<br/>demo.config.json {host:sheet, uses:[LibSheets,LibSidebar]}"]
 
   classDef vend fill:#1f4e79,stroke:#9ec5fe,color:#ffffff;
   classDef novend fill:#5a3d00,stroke:#ffd27d,color:#ffffff;
   class lsprod vend;
-  class lstest,lsharn,lsbound,pkg novend;
+  class lstest,lsdemo,pkg,push,hosts,wrap,d1,d2 novend;
 ```
 
 Blue = vendored into consumer production deployments. Amber = dev/test/demo
-material that stays in GAS-Core and is never vendored into production.
+material that stays in GAS-Core and is never vendored into production
+(`<name>Demo.js` included — it is co-located with the library but never shipped).
 
-### 4.1 Per-library layout
+### 4.1 Library + demo layout
+
+Revised 2026-06-18b/c (hybrid): a library directory holds production code +
+`test/` + its own co-located `<name>Demo.js`; composition lives in
+`examples/demos/`; the shared wrapper lives in `examples/demo-harness/`.
 
 ```
 libs/LibSheets/
   libSheets.js              production code (only this file gets vendored
                              into consumer projects, per CONSUMERS.md)
+  libSheetsDemo.js          co-located demo logic: a library-prefixed manifest
+                             `var LIBSHEETS_DEMOS = [{ name, demo:'libSheets_…' }]`
+                             + named demo functions that read env from Harness.
+                             Never vendored to consumers.
   CHANGELOG.md
   CONSUMERS.md
   test/
     libSheets.test.js        Tier 1: node:test, exercises the pure-logic
                              helpers re-exported by the dual-export guard
                              (see coverage boundary below)
-  harness/
-    demo.js                  registration module (see §4.3)
-    bound-sheet/              optional: standalone clasp project
-      .clasp.json              for a real bound-Sheet example
-      appsscript.json
-      Code.js
+
+examples/demo-harness/       shared wrapper (pushed with every demo):
+  harness.js                 Harness.getSheet(), onOpen() menu builder over each
+                             loaded library's <LIB>_DEMOS, doGet() router
+
+libs/harness-hosts.json      host scriptIds, owned once: { "sheet": "<id>",
+                             "doc": "<id>", "standalone": "<id>" }
+
+examples/demos/
+  libsheets-basic/
+    demo.config.json         { "host": "sheet", "uses": ["LibSheets"] }
+  libsheets-with-notifications/
+    demo.config.json         { "host": "sheet", "uses": ["LibSheets","LibSidebar"] }
+    Code.js                  OPTIONAL cross-library glue only
 ```
 
-`test/` and `harness/` never get vendored into a consumer's production clasp
-deployment — only `libSheets.js` does. No test/demo bloat in production.
+`scripts/push-demo.sh <demo>` reads `examples/demos/<demo>/demo.config.json`,
+copies the shared wrapper + each `uses` library's source (`libs/<Name>/*.js`,
+which includes its `<name>Demo.js`) into a temp build dir, writes a transient
+`.clasp.json` whose `scriptId` is `libs/harness-hosts.json[host]`, and runs
+`clasp push`. Nothing committed can drift; the only persistent config is the
+host scriptIds.
+
+`test/` and `<name>Demo.js` never get vendored into a consumer's production
+clasp deployment — only `libSheets.js` does. Demos are never vendored at all.
 
 **Tier 1 coverage boundary (correction).** Tier 1 runs in plain Node and can
 only test code that does not touch `SpreadsheetApp`, `DocumentApp`, or other
@@ -133,7 +277,15 @@ header aliasing" directly — that is not achievable in Node and has been
 corrected: Tier 1 exercises the extracted helpers that *implement* aliasing,
 not the `SpreadsheetApp`-bound class that wraps them.
 
-### 4.2 Shared integration harness
+### 4.2 Shared integration harness — ⚠️ SUPERSEDED (2026-06-18)
+
+> **Superseded by the 2026-06-18 revision (top of doc).** This whole section
+> describes the shared aggregator that has been dropped. It is retained for
+> rationale/history only — the `HARNESS_DEMOS_` namespacing, the `vendor/` demo
+> copies, `scripts/copy-demo-files.sh`, and the `check-lib-drift.sh` intra-repo
+> mode it relies on are **no longer part of the design**. Each library now has
+> its own standalone harness instead (§4.0, §4.1). Skip to §4.3 for the
+> still-current registration shape and §4.5 for tiering.
 
 ```
 examples/integrated/test-harness/
@@ -217,14 +369,52 @@ declares no runtime dependencies for the libraries themselves and is part of
 the GAS-Core dev environment only; it is never copied into a consumer's clasp
 `rootDir` and is excluded from vendoring (no pairs-file entry).
 
-### 4.3 Registration module contract (I4)
+### 4.3 Demo registration shape (I4 → hybrid manifest)
 
-Each `libs/<Name>/harness/demo.js` exports an array of entries. The contract is
+> **Revised 2026-06-18b/c (hybrid) — supersedes the closure-based `entryPoint`
+> shape shown in the rest of this section.** Each library co-locates its demos in
+> `libs/<Name>/<name>Demo.js` as a **library-prefixed manifest of named global
+> functions**, not a closure array:
+>
+> ```js
+> // libs/LibSheets/libSheetsDemo.js
+> var LIBSHEETS_DEMOS = [
+>   { name: 'Demo Sheets', demo: 'libSheets_sheetDemo', kind: 'menu' },
+> ];
+> function libSheets_sheetDemo() {          // named global, zero-arg, libName_-prefixed
+>   var ss = Harness.getSheet();            // environment from the shared wrapper
+>   // ... exercise LibSheets against ss ...
+>   return { status: 'ok', message: '…' };  // DemoResult still used for doGet/Tier 2
+> }
+> ```
+>
+> Two deliberate changes from the original I4 closure form below:
+> 1. **`demo` is a string naming a real global function**, not an anonymous
+>    `entryPoint: (ctx)=>{}` closure. This is what makes `menu.addItem(name,
+>    e.demo)` actually bind and run on click (GAS binds menu items to *named*
+>    globals only — the closure form could not be bound, which is why the
+>    aggregator's per-feature menu was a no-op).
+> 2. **Environment is pulled, not pushed.** A demo function takes no arguments
+>    and reads what it needs from the shared `Harness` (`Harness.getSheet()`),
+>    instead of receiving a `ctx` argument — keeping it zero-arg and bindable.
+>
+> The shared wrapper (`examples/demo-harness/`) iterates each loaded library's
+> `<LIB>_DEMOS`, builds the menu, and for `doGet`/Tier 2 calls the named function
+> and returns its `DemoResult`. The `DemoResult`/`kind` definitions below still
+> apply; the `DemoContext`/`entryPoint` closure signature does not.
+
+> **(Historical, 2026-06-18 — superseded by the hybrid note above.)** The
+> `DemoEntry`/`DemoResult` shape below was the per-library-harness form: a plain
+> top-level `const demos = [...]` of `entryPoint` closures, no `HARNESS_DEMOS_`,
+> consumed by that library's own `Code.js`. Retained for the `DemoResult`/`kind`
+> field definitions, which the hybrid still uses.
+
+Each library's harness declares an array of demo entries. The contract is
 specified at interface revision **I4**, which pins three things the earlier
 sketch left implicit — the **entry-point signature**, the **completion
 signal**, and the **output schema** — plus an optional **`kind`**
-discriminator so the aggregator can render a feature the right way (menu
-action, web-app route, or sidebar launch) without per-library special-casing.
+discriminator so the harness can render a feature the right way (menu
+action, web-app route, or sidebar launch) without special-casing.
 
 ```js
 // libs/LibSheets/harness/demo.js  — I4
@@ -301,8 +491,11 @@ additive within each `harness/demo.js`.
 | 2 — menu (interactive) | `onOpen()` menu structure | one submenu per library | one menu item per feature |
 | 3 — Playwright (UI-level) | spec file + tag, organized per library | one spec file per library | tag filter within a spec |
 
-`?scope=all` runs everything at Tier 2. The filtering logic for Tier 2 lives
-once in the aggregator; libraries never need to know about scope syntax.
+`?scope=all` runs everything at Tier 2. Per the 2026-06-18 revision each
+library's harness has its own `doGet()`, so scoping is now *within* a library
+(`?scope=feature:headerAliasing` or `?scope=all`); the `lib:` dimension is
+implied by which harness you hit. Each harness owns its own small scope parser —
+there is no shared aggregator to centralise it, and the parser is a few lines.
 
 ### 4.5 Tiering policy
 
@@ -390,38 +583,34 @@ sequenceDiagram
 
 ## 6. Why this shape (alternatives considered)
 
-| Alternative | Rejected because |
+> **Revised 2026-06-18.** The first row below — "one harness per library" — was
+> originally rejected but is now the **chosen** approach. Its two stated
+> downsides were re-weighed and found not to bind: the `onOpen()`/`doGet()`
+> "boilerplate" is ~30 lines of trivial, stable code per library (cheap to
+> duplicate, with no shared-scope coupling), and the "demo everything together"
+> story it sacrificed turned out to cost far more than it was worth (see the
+> top-of-doc revision) and was not actually needed.
+
+| Alternative | Status |
 |---|---|
-| One harness per library (fully separate bound projects) | Duplicates `onOpen()`/`doGet()` boilerplate per library; no shared "demo everything together" story for add-on-style integration testing. |
-| Single top-level `examples/` tree mirroring lib names, separate from `libs/` | Splits "how do I use LibSheets" across two trees; PRs touching a library's behavior and its demo land in different directories. |
-| Central registry file listing all libraries' demos | Creates a single file every library PR must touch — merge-conflict prone when multiple library PRs land close together. Rejected in favor of each library self-declaring via its own `harness/demo.js`. |
+| **One harness per library (fully separate bound projects)** | **CHOSEN (2026-06-18).** Small per-library `onOpen()`/`doGet()` duplication, but no shared global scope, no demo vendoring, no namespacing, no drift script — and per-feature menu clicks actually work. |
+| Single shared aggregator hosting all libraries' demos | **REJECTED (2026-06-18, was the prior plan).** One shared GAS global scope forces `HARNESS_DEMOS_` namespacing + demo vendoring + a generated-file drift mechanism, and still cannot offer click-to-run-one-feature (`Code.js:270`). |
+| Single top-level `examples/` tree mirroring lib names, separate from `libs/` | Rejected: splits "how do I use LibSheets" across two trees; the harness now lives under `libs/<Name>/harness/`, co-located with the code it demos. |
+| Central registry file listing all libraries' demos | Rejected: a single file every library PR must touch — merge-conflict prone. Per-library harnesses avoid any shared file entirely. |
 
-### 6.1 Why adding a library needs no aggregator core change (proof)
+### 6.1 ⚠️ SUPERSEDED (2026-06-18) — "adding a library needs no aggregator core change"
 
-Goal 5 (§2) and phasing step 3 (§8) both assert that adding a library requires
-**no change to the aggregator's core logic**. This holds by construction:
+> Superseded by the top-of-doc revision. This proof argued the *shared
+> aggregator* needed no core change when a library was added. With per-library
+> harnesses there is **no shared core at all** — adding a library means adding
+> `libs/<NewLib>/` with its own `test/` and `harness/`, touching nothing else.
+> The property the proof sought (adding a library is locally contained) now
+> holds trivially by construction, with no aggregator, no `vendor/` copy, and no
+> pairs-file entry. The original four-point argument is retained below for
+> history only and no longer reflects the design.
 
-1. **Discovery is by directory scan, not by an enumerated list.** The
-   aggregator iterates over whatever `vendor/*/demo.js` files are present
-   (§4.2 load phase); a new library appears simply because a new vendored copy
-   exists. No symbol in the aggregator names any specific library.
-2. **Library identity is derived from the path, not declared in core.** Each
-   entry is tagged with its library name from the vendored path (§4.3), so the
-   scope filter (`lib:<Name>`) works for an unseen library with no new code.
-3. **The contract is uniform (I4).** Every `demo.js` exposes the same
-   `DemoEntry[]` shape with the same `entryPoint`/`DemoResult` signature
-   (§4.3). The aggregator dispatches against the interface, not against any
-   library's internals; `kind` covers menu/webapp/sidebar rendering generically.
-4. **Isolation is per-library and uniform.** The try/catch wraps *each*
-   library's load (§4.2), so a new (or broken) library can only affect itself.
-
-The only files that change when adding a library are: the new
-`libs/<NewLib>/harness/demo.js`, the consumer/aggregator **pairs-file**
-(one new line, data not code [`scripts/check-lib-drift.sh:37`]), and the
-vendored flat copy the drift check keeps in sync. None of these is aggregator
-core logic. Phasing step 3 ("add `LibSidebar`'s `harness/demo.js`, confirm the
-aggregator needed no core changes") is therefore a *verification* of this
-property, not a hoped-for outcome.
+_(Original aggregator proof retained in version history; removed from the active
+design as moot — there is no aggregator core to keep library-agnostic.)_
 
 ## 7. Open questions
 
@@ -439,29 +628,55 @@ work). Earlier drafts mixed the two under one heading.
 
 ### 7.2 Open (need a decision or later work)
 
-- **Test fixture ownership:** the bound Sheet/Doc IDs used by Tier 2/3 need a
-  home — a dedicated shared-drive folder, **not** personal Drive. Account/Drive
-  TBD by the user. *Blocks Tier 2 execution, not the design.*
+- **Host + fixture ownership:** the reusable harness host projects (the bound
+  Sheet/Doc containers and any standalone project, with their scriptIds recorded
+  in `libs/harness-hosts.json`) need a home — a dedicated shared-drive folder,
+  **not** personal Drive. Account/Drive TBD by the user. *Blocks demo push/Tier 2
+  execution, not the design.* (`GAS-Core-pos.2`)
 - **Tier 2 CI automation:** running `doGet()`-based acceptance checks today is
   manual; a service-account-driven CI job is a later enhancement, not required
   for the initial harness.
-- **Dev `package.json` placement:** confirmed needed (§4.2), but whether the
+- **Dev `package.json` placement:** confirmed needed for Tier 1, but whether the
   `node --test` config lives at repo root or under a `dev/` subtree is an open
   layout call to settle when Tier 1 is scaffolded.
 
 ## 8. Suggested phasing
 
-1. Scaffold `test/` + `harness/demo.js` for `LibSheets` only (smallest,
-   already has consumers) — prove the per-library layout and Tier 1 runner.
-2. Build the shared `examples/integrated/test-harness/` aggregator against
-   that one library — prove vendoring + scoping + try/catch isolation.
-3. Add `LibSidebar`'s `harness/demo.js`, confirm the aggregator needed no
-   core changes.
-4. Add a bound-sheet example + Tier 2 `doGet()` acceptance check for
-   `LibSheets`, reusing `gas-acceptance-testing`.
-5. Add a Tier 3 Playwright smoke spec against the deployed harness, reusing
-   `gas-playwright-testing`.
-6. Document the contributor flow (§5) in `README.md` once proven.
+Revised 2026-06-18b/c for the hybrid model (co-located demo logic + shared
+wrapper + composed deployable demos pushed to reusable hosts; no aggregator):
+
+1. ✅ Scaffold `test/` for `LibSheets` (Tier 1 `node --test` runner +
+   dev `package.json`) — done (`GAS-Core-pos.3`).
+2. ✅ (2026-06-18) Removed the batch-4 demo-vendoring artifacts
+   (`scripts/copy-demo-files.sh`, `pairs-file.txt`) and reverted
+   `scripts/check-lib-drift.sh` to its production-only version. The dropped
+   aggregator (`examples/integrated/test-harness/`) is kept briefly as a salvage
+   reference (its `doGet` scope parser, per-entry try/catch isolation, Part-D
+   deploy-tooling notes) and deleted once the first demo + push tool land.
+3. **Extract** the demo functions currently embedded in the vendored
+   `libSheets.js` (lines ~43–144: `demoSheetManagement`,
+   `demoCreateOrRetrieveSheet`, `demoAccessAndUpdateSheet`, `demoSpecifyHeaders`)
+   into `libs/LibSheets/libSheetsDemo.js` as a `LIBSHEETS_DEMOS` manifest +
+   `libSheets_`-prefixed named functions reading env from `Harness`. Removes demo
+   bloat from the vendored production file (`GAS-Core-<extract>`).
+4. Resolve host/fixture ownership (`GAS-Core-pos.2`): own the reusable host
+   projects by container kind (`sheet`, `doc`) on a shared drive; record their
+   scriptIds in `libs/harness-hosts.json`.
+5. Build the `push-demo` tool + the shared `examples/demo-harness/` wrapper
+   (`Harness.getSheet()`, `onOpen` menu over `<LIB>_DEMOS`, `doGet`) +
+   `demo.config.json` manifest + `examples/demos/` layout (`GAS-Core-sou`).
+   Ensure all demo code is plain GAS-V8-safe (`GAS-Core-7p5`).
+6. Author the first demo `examples/demos/libsheets-basic/` (uses `LibSheets`) +
+   a Tier 2 `doGet()` acceptance check that asserts deployment identity (which
+   demo + version is loaded in the host) before behavior, reusing
+   `gas-acceptance-testing` (`GAS-Core-pos.9`).
+7. Author `examples/demos/libsheets-with-notifications/` (uses `LibSheets` +
+   `LibSidebar`, via `libs/LibSidebar/libSidebarDemo.js`) — composed demo,
+   interactive sidebar / Tier 3 territory (`GAS-Core-pos.8`). No sidebar-only
+   demo unless a need appears.
+8. Add a Tier 3 Playwright smoke spec against a deployed demo, reusing
+   `gas-playwright-testing` (`GAS-Core-pos.10`).
+9. Document the contributor flow (§5) in `README.md` (`GAS-Core-pos.7`).
 
 ## 9. SDLC alignment
 
@@ -471,13 +686,13 @@ the harness mechanism that serves it and the canonical practice it reuses.
 
 | SDLC phase | Harness mechanism | GAS-Core practice / source it reuses |
 |---|---|---|
-| Design / interface | I4 registration contract (§4.3): fixed `entryPoint`/`DemoResult`, optional `kind` | This document; uniform contract keeps the aggregator library-agnostic (§6.1) |
+| Design / interface | Hybrid manifest (§4.3): `<LIB>_DEMOS` of named global fns + `DemoResult`/`kind` | This document; named-function manifest makes menu items bindable and keeps the shared wrapper library-agnostic (revised 2026-06-18b/c) |
 | Implement | Library code + co-located `test/` + `harness/demo.js` in `libs/<Name>/` | Per-library layout (§4.1); vendoring stays production-only |
 | Unit verify | Tier 1 `node --test` on pure helpers | Dual-export guard [`libSheets.js:829–841`]; `best-practices/gas-editor-testing` |
 | Integration verify | Tier 2 `doGet()` against bound fixture | `best-practices/gas-acceptance-testing` (entry-point-as-call-site) |
 | UI / acceptance | Tier 3 Playwright smoke | `best-practices/gas-playwright-testing` (helpers + config example present) |
 | Release | Version-tag bump + `CHANGELOG.md`; drift re-pin | `README.md` consuming flow [`README.md:13–32`]; `CONSUMERS.md` per lib |
-| Maintain / guard | `scripts/check-lib-drift.sh` over pairs-file | Existing drift tooling [`scripts/check-lib-drift.sh`] |
+| Maintain / guard | `scripts/check-lib-drift.sh` over each consumer's pairs-file (production files only — not demos) | Existing drift tooling [`scripts/check-lib-drift.sh`] |
 | Report | `DemoResult` output schema → logs / doGet body | Tier 2 response body; `best-practices/gas-test-reporting` |
 
 No SDLC phase introduces a bespoke process: each row is an existing practice
@@ -499,19 +714,22 @@ delivers a runnable demo and a regression bar:
 - **Tier 1 is the only mandatory gate.** Tier 2/3 are pre-release or periodic
   (§4.5), so day-to-day PR ceremony is just `node --test` plus the existing
   drift check — both already local, both fast.
-- **Reuse over invention.** No new sync tooling (vendoring side, §4.2); the dev
-  `package.json` is the single genuinely-new artifact, and it is dev-only.
-- **Isolation removes blast-radius ceremony.** Per-library try/catch (§4.2)
-  means a broken demo needs no coordinated rollback — it self-contains.
+- **Reuse over invention.** No demo sync tooling at all (revised 2026-06-18 —
+  the demo `vendor/`/`copy-demo-files.sh`/drift-pairs machinery was dropped); the
+  dev `package.json` plus each library's small harness `Code.js` are the only
+  new artifacts, and all are dev-only.
+- **Isolation by construction.** Libraries no longer share a deployment, so a
+  broken demo is contained to its own harness with no coordinated rollback.
 
 ### 10.2 Reuse & calibration anchors
 
 The ceremony level is anchored to concrete, already-present reference points so
 it neither over- nor under-engineers:
 
-- **Anchor: the existing vendoring mechanism** [`scripts/check-lib-drift.sh`,
-  `README.md:13–32`]. The harness adds pairs-file *entries*, not a new sync
-  system — calibration target is "same effort as adding a production lib."
+- **Anchor: the existing production vendoring mechanism**
+  [`scripts/check-lib-drift.sh`, `README.md:13–32`]. This is retained **for
+  production consumer files only** and is unchanged by the harness work (revised
+  2026-06-18 — demos are no longer vendored or drift-checked at all).
 - **Anchor: the documented testing practices** (`gas-acceptance-testing`,
   `gas-playwright-testing`, `gas-editor-testing`). Each tier reuses an existing
   pattern rather than defining a new test methodology (§3 non-goals, §9 table).

@@ -50,6 +50,8 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
+## python
+always use the uv created virtual environment /mnt/c/dev/venvs/uv1 for python
 
 ## Build & Test
 
