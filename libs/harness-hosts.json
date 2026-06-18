@@ -1,6 +1,8 @@
 {
   "$comment": "Reusable clasp host script IDs, keyed by container type, owned once (docs/test-harness-design.md §4.1). scripts/push-demo.sh looks up demo.config.json's `host` field here to find the scriptId to push to. One demo lives per host at a time -- pushing overwrites the host's prior content. Populate scriptIds as hosts are provisioned (tracked by GAS-Core-pos.2); empty/missing entries cause push-demo.sh to fail with a clear message rather than push to script id \"\".",
-  "sheet": "1nSXy1MQcOEO5BP5QpGr22dPDnzuKNpfPXSRjP0CuLaSh6GwMckummyDd",
-  "doc": "",
+  "sheetScriptId":"1nSXy1MQcOEO5BP5QpGr22dPDnzuKNpfPXSRjP0CuLaSh6GwMckummyDd",
+  "sheetId":"1HlfuwK42gOqMEcGeeypx7TrN1suAbqOg1ru3I2PRzoo",
+  "docId": "",
+  "docScriptId": "",
   "standalone": ""
 }

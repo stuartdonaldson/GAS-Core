@@ -7,13 +7,16 @@
 #   2. Assemble a temp build dir: shared wrapper (examples/demo-harness/*)
 #      + each uses[] library's source (libs/<Name>/*.js, which includes its
 #      co-located <name>Demo.js) + optional demo-specific Code.js glue.
-#   3. Render a transient .clasp.json { scriptId: harness-hosts.json[host],
-#      rootDir: <build dir> }.
-#   4. clasp push (skipped under --dry-run).
+#   3. Render a transient .clasp.json { scriptId: harness-hosts.json[host +
+#      "ScriptId"], rootDir: <build dir> }.
+#   4. clasp push (skipped under --dry-run). If harness-hosts.json[host + "Id"]
+#      (the container id) is set, print a URL to the container so the user has
+#      something to open the demo with, not just the script editor.
 #
 # Nothing committed can drift: the build dir and .clasp.json are generated
 # fresh each run and discarded; the only persistent config is
-# libs/harness-hosts.json (host scriptIds) and each demo's demo.config.json.
+# libs/harness-hosts.json (host container ids + scriptIds) and each demo's
+# demo.config.json.
 #
 # One demo lives per host at a time -- pushing overwrites the host's prior
 # content (by design; see docs/test-harness-design.md §4.1).
@@ -128,7 +131,9 @@ cp -v "$WRAPPER_DIR"/*.js "$BUILD_DIR/" 2>/dev/null || {
   exit 1
 }
 
-# 2. Each uses[] library's source (production + co-located <name>Demo.js)
+# 2. Each uses[] library's source (production + co-located <name>Demo.js),
+#    plus any co-located .html assets (e.g. LibSidebar's NotificationSidebar.html,
+#    served via HtmlService.createHtmlOutputFromFile()).
 for LIB in "${USES[@]}"; do
   LIB_DIR="$REPO_ROOT/libs/$LIB"
   if [[ ! -d "$LIB_DIR" ]]; then
@@ -137,12 +142,16 @@ for LIB in "${USES[@]}"; do
   fi
   shopt -s nullglob
   LIB_JS_FILES=("$LIB_DIR"/*.js)
+  LIB_HTML_FILES=("$LIB_DIR"/*.html)
   shopt -u nullglob
   if [[ "${#LIB_JS_FILES[@]}" -eq 0 ]]; then
     echo "FAIL: no .js files found directly under $LIB_DIR for library '$LIB'." >&2
     exit 1
   fi
   for f in "${LIB_JS_FILES[@]}"; do
+    cp -v "$f" "$BUILD_DIR/"
+  done
+  for f in "${LIB_HTML_FILES[@]}"; do
     cp -v "$f" "$BUILD_DIR/"
   done
 done
@@ -168,14 +177,15 @@ if [[ ! -f "$HOSTS_FILE" ]]; then
   exit 1
 fi
 
-SCRIPT_ID="$(jq -r --arg host "$HOST" '.[$host] // empty' "$HOSTS_FILE")"
+SCRIPT_ID="$(jq -r --arg key "${HOST}ScriptId" '.[$key] // empty' "$HOSTS_FILE")"
+CONTAINER_ID="$(jq -r --arg key "${HOST}Id" '.[$key] // empty' "$HOSTS_FILE")"
 if [[ -z "$SCRIPT_ID" ]]; then
-  echo "FAIL: no scriptId configured for host '$HOST' in $HOSTS_FILE." >&2
-  echo "      (expected under DRY-RUN too, until GAS-Core-pos.2 provisions real hosts)" >&2
+  echo "FAIL: no '${HOST}ScriptId' configured for host '$HOST' in $HOSTS_FILE." >&2
+  echo "      (expected under DRY-RUN too, until the host is provisioned)" >&2
   if [[ "$DRY_RUN" -ne 1 ]]; then
     exit 1
   fi
-  SCRIPT_ID="<unset: $HOST>"
+  SCRIPT_ID="<unset: ${HOST}ScriptId>"
 fi
 
 CLASP_JSON="$BUILD_DIR/.clasp.json"
@@ -208,6 +218,17 @@ fi
 
 echo "Pushing to host '$HOST' (scriptId: $SCRIPT_ID)..."
 (cd "$BUILD_DIR" && clasp push)
+
+if [[ -n "$CONTAINER_ID" ]]; then
+  CONTAINER_URL=""
+  case "$HOST" in
+    sheet) CONTAINER_URL="https://docs.google.com/spreadsheets/d/$CONTAINER_ID/edit" ;;
+    doc) CONTAINER_URL="https://docs.google.com/document/d/$CONTAINER_ID/edit" ;;
+  esac
+  if [[ -n "$CONTAINER_URL" ]]; then
+    echo "Container URL: $CONTAINER_URL"
+  fi
+fi
 
 if [[ "$DO_OPEN" -eq 1 ]]; then
   (cd "$BUILD_DIR" && clasp open)

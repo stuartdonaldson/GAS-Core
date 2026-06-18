@@ -85,7 +85,10 @@ Status: draft, iterating toward implementation.
 >
 > **Reusable hosts + push tool.** A small fixed set of clasp host projects, keyed
 > by container type (`sheet`, `doc`, `standalone` if needed), is owned once;
-> scriptIds live in `libs/harness-hosts.json`. `scripts/push-demo.sh <demo>`
+> both the container id (`<kind>Id`, e.g. the actual Sheet/Doc id) and the bound
+> script id (`<kind>ScriptId`) live in `libs/harness-hosts.json`, per kind --
+> the container id is needed to give the user a URL to the demo, the script id
+> to `clasp push` to it. `scripts/push-demo.sh <demo>`
 > reads `demo.config.json`, assembles the shared wrapper + each `uses` library's
 > source (`libs/<Name>/*.js`) + each library's `<name>Demo.js` into a temp dir,
 > and `clasp push`es to the host for its `host` kind. One demo live per host at a
@@ -181,7 +184,7 @@ graph TD
   root --> bp["best-practices/<br/>methodology docs"]
   root --> drift["scripts/check-lib-drift.sh<br/>production-consumer vendoring guard"]
   root --> push["scripts/push-demo.sh<br/>assemble wrapper + demo's uses[] libs → clasp push to host"]
-  root --> hosts["libs/harness-hosts.json<br/>host scriptIds: {sheet, doc, standalone}"]
+  root --> hosts["libs/harness-hosts.json<br/>per host kind: containerId + scriptId<br/>(sheet, doc, standalone)"]
   root --> libs["libs/"]
   root --> wrap["examples/demo-harness/<br/>shared wrapper: Harness.getSheet(), onOpen menu, doGet"]
   root --> demos["examples/demos/"]
@@ -230,8 +233,14 @@ examples/demo-harness/       shared wrapper (pushed with every demo):
   harness.js                 Harness.getSheet(), onOpen() menu builder over each
                              loaded library's <LIB>_DEMOS, doGet() router
 
-libs/harness-hosts.json      host scriptIds, owned once: { "sheet": "<id>",
-                             "doc": "<id>", "standalone": "<id>" }
+libs/harness-hosts.json      host container ids + scriptIds, owned once:
+                             { "sheetId": "<container id>",
+                               "sheetScriptId": "<bound script id>",
+                               "docId": "<container id>",
+                               "docScriptId": "<bound script id>",
+                               "standalone": "<script id, no container>" }
+                             containerId is needed to give the user a URL to
+                             the demo; scriptId is needed to `clasp push` to it.
 
 examples/demos/
   libsheets-basic/
@@ -244,9 +253,11 @@ examples/demos/
 `scripts/push-demo.sh <demo>` reads `examples/demos/<demo>/demo.config.json`,
 copies the shared wrapper + each `uses` library's source (`libs/<Name>/*.js`,
 which includes its `<name>Demo.js`) into a temp build dir, writes a transient
-`.clasp.json` whose `scriptId` is `libs/harness-hosts.json[host]`, and runs
-`clasp push`. Nothing committed can drift; the only persistent config is the
-host scriptIds.
+`.clasp.json` whose `scriptId` is `libs/harness-hosts.json[host + "ScriptId"]`,
+and runs `clasp push`; after a successful push it prints the host's container
+URL (from `libs/harness-hosts.json[host + "Id"]`) so the user has something to
+open the demo with. Nothing committed can drift; the only persistent config is
+the host container ids + scriptIds.
 
 `test/` and `<name>Demo.js` never get vendored into a consumer's production
 clasp deployment — only `libSheets.js` does. Demos are never vendored at all.

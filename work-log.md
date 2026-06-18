@@ -39,3 +39,11 @@ across three iterations to a final HYBRID model and re-scoped all tracking:
 - libSheets.js (the VENDORED production file) currently embeds demo functions
   (~lines 43-144) that ship to every consumer — extracting them (GAS-Core-xnc)
   is both the demo seed and a production-hygiene fix.
+
+## 2026-06-18 15:56:57
+
+### Summary:
+Resolved GAS-Core-pos.2: adopted the new split harness-hosts.json schema (sheetId/sheetScriptId, docId/docScriptId, standalone). Updated scripts/push-demo.sh to resolve scriptId via `<host>ScriptId` and containerId via `<host>Id`, with an updated unset-host error message, and to print a clickable container URL (Sheet/Doc edit link) after a successful push. Updated docs/test-harness-design.md §4.0/§4.1 (mermaid node, layout block, prose) to document the new per-host containerId+scriptId shape. Closed GAS-Core-pos.2 in bd; Doc/Standalone hosts remain intentionally unprovisioned until a demo needs them (same manual one-off process used for Sheet).
+
+### Key Learnings:
+The container id (actual Sheet/Doc id) and the bound Apps Script project id are distinct and must both be tracked per host kind in libs/harness-hosts.json -- the scriptId drives `clasp push`, while the containerId is what lets push-demo.sh hand the user a real URL to the deployed demo (clasp open only opens the script editor, not the container).
