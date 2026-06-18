@@ -1,0 +1,14 @@
+{
+  "name": "gas-core-dev",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev-only package.json for GAS-Core. Enables `node --test` for Tier 1 (plain-Node) tests of pure helpers in libs/*. Never vendored into any consumer clasp deployment.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test 'libs/**/test/**/*.test.js'"
+  },
+  "files": [],
+  "engines": {
+    "node": ">=18"
+  }
+}
