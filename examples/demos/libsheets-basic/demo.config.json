@@ -1,4 +1,7 @@
 {
   "host": "sheet",
-  "uses": ["LibSheets"]
+  "uses": ["LibSheets"],
+  "version": "libsheets-basic-v1.0.0",
+  "_execUrl": "https://script.google.com/macros/s/AKfycbwnP9q5Tr5hLMn3YVNqjzdLh8wD3xrbQ7F5NGoJeTlf7-x2dJ0nwrbVu0zAw-ZCB1CB/exec",
+  "_execUrlNote": "Deployed web-app /exec URL for the Tier 2 LIVE acceptance run (set HARNESS_EXEC_URL to it). Read by nothing automated -- push-demo.sh only consumes host/uses/version. Requires a one-time interactive OAuth authorization of the SpreadsheetApp scope by the host owner before anonymous doGet requests stop returning HTTP 403 (see GAS-Core-pos.9 notes)."
 }

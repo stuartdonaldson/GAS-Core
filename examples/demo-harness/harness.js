@@ -19,13 +19,27 @@
  *   function. GAS menu items only bind named globals, not closures — this
  *   is why the manifest's `demo` field is a string, not a function
  *   reference (docs/test-harness-design.md §4.3).
- * - `doGet(e)` — Tier 2 HTTP entry point; routes `?demo=<name>` (or
- *   `?feature=<name>`, matched against manifest `name`) to the named global
- *   function and returns its DemoResult as JSON.
+ * - `doGet(e)` — Tier 2 HTTP entry point; routes `?action=info` (deployment
+ *   identity — which demo + version is currently loaded in the reused host)
+ *   and `?demo=<name>` (or `?feature=<name>`, matched against manifest `name`)
+ *   to the named global function and returns its DemoResult as JSON.
  *
  * Plain GAS-V8: no require(), no ES modules. All `<LIB>_DEMOS` manifests
  * loaded alongside this file share one global scope, per the GAS V8
  * runtime model (developers.google.com/apps-script/guides/v8-runtime).
+ *
+ * Deployment identity (`?action=info`). Hosts are REUSED slots: many demos
+ * are pushed to one bound Sheet/Doc over time (docs/test-harness-design.md
+ * §4.1, "one demo live per host at a time"). A Tier 2 acceptance check MUST
+ * therefore confirm *which* demo/version is actually loaded BEFORE asserting
+ * behavior — otherwise a failed/stale push (or an un-reloaded sheet) silently
+ * tests the wrong code. scripts/push-demo.sh stamps the pushed demo's identity
+ * into a global `HARNESS_DEPLOY_INFO` (see harness-deploy-info.js it generates
+ * per push); `?action=info` surfaces it. The reused-host identity assertion is
+ * the one substantive difference between this standalone harness and a
+ * dedicated-per-demo one (the ?action=info convention was salvaged from the
+ * dropped integration aggregator, since removed — see
+ * docs/test-harness-design.md §4.2).
  */
 
 /**
@@ -112,6 +126,37 @@ function onOpen() {
 function harness_noop_() {}
 
 /**
+ * Returns the deployment-identity record for the demo currently loaded in this
+ * (reused) host. scripts/push-demo.sh writes a `harness-deploy-info.js` into
+ * each build dir that sets a global `HARNESS_DEPLOY_INFO` naming the pushed
+ * demo, its `uses[]`, the host kind, and git/build provenance. If that file is
+ * absent (e.g. a hand push, or a build that predates the stamping), this falls
+ * back to a record reporting `demo: '(unstamped)'` plus the demos discovered in
+ * scope — so `?action=info` always returns a well-formed identity, never throws.
+ *
+ * @returns {{status: 'ok', demo: string, uses: string[], host: string,
+ *   version: string, builtAt: string, gitCommit: string, demos: string[],
+ *   stamped: boolean}}
+ */
+function harness_deploymentInfo_() {
+  var info = (typeof HARNESS_DEPLOY_INFO !== 'undefined' && HARNESS_DEPLOY_INFO)
+    ? HARNESS_DEPLOY_INFO
+    : {};
+  var demos = harness_collectDemos_.call(this).map(function (entry) { return entry.name; });
+  return {
+    status: 'ok',
+    demo: info.demo || '(unstamped)',
+    uses: Array.isArray(info.uses) ? info.uses : [],
+    host: info.host || '(unknown)',
+    version: info.version || '(unstamped)',
+    builtAt: info.builtAt || '(unknown)',
+    gitCommit: info.gitCommit || '(unknown)',
+    demos: demos,
+    stamped: typeof HARNESS_DEPLOY_INFO !== 'undefined' && !!HARNESS_DEPLOY_INFO,
+  };
+}
+
+/**
  * Tier 2 HTTP entry point. Routes `?demo=<name>` (matched case-sensitively
  * against a manifest entry's `name`) to that entry's named global demo
  * function and returns its DemoResult as JSON. Falls back to `?feature=`
@@ -121,6 +166,16 @@ function harness_noop_() {}
  */
 function doGet(e) {
   const params = (e && e.parameter) || {};
+
+  // Deployment identity FIRST (?action=info). A reused host can hold a stale
+  // demo after a failed push or an un-reloaded sheet; a Tier 2 caller asserts
+  // identity before behavior so it never silently tests the wrong code.
+  if (params.action === 'info') {
+    return ContentService.createTextOutput(
+      JSON.stringify(harness_deploymentInfo_.call(this))
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
   const requested = params.demo || params.feature;
   const entries = harness_collectDemos_.call(this);
 
@@ -159,5 +214,5 @@ function doGet(e) {
 
 if (typeof module !== 'undefined' && module.exports) {
   // Node test-sandbox path only — never present in a real GAS V8 runtime.
-  module.exports = { Harness, onOpen, doGet, harness_collectDemos_ };
+  module.exports = { Harness, onOpen, doGet, harness_collectDemos_, harness_deploymentInfo_ };
 }
