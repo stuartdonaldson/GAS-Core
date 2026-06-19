@@ -5,9 +5,13 @@
   "description": "Dev-only package.json for GAS-Core. Enables `node --test` for Tier 1 (plain-Node) tests of pure helpers in libs/*. Never vendored into any consumer clasp deployment.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test 'libs/**/test/**/*.test.js'"
+    "test": "node --test 'libs/**/test/**/*.test.js'",
+    "smoke:libsheets-basic": "playwright test --config examples/demos/libsheets-basic/playwright.config.js"
   },
   "files": [],
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  },
   "engines": {
     "node": ">=18"
   }

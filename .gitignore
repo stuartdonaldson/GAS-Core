@@ -3,3 +3,12 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Node / Playwright (dev-only; never vendored into a consumer clasp deploy)
+node_modules/
+
+# Tier 3 Playwright (gas-playwright-testing): captured Google session + artifacts.
+# .auth/user.json holds a live session — MUST NOT be committed.
+.auth/
+test-results/
+playwright-report/

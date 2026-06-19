@@ -60,6 +60,13 @@ Tiering policy in full (see `docs/test-harness-design.md` §4–§5):
 | 2 | Library's own bound harness `doGet()` vs its test fixture, real Sheets/Docs API | Before tagging a release |
 | 3 | Playwright driving the deployed harness UI (menu clicks, dialogs) | Periodic/manual smoke test, not a default gate |
 
+Tier 3 example: `examples/demos/libsheets-basic/smoke.spec.js` (+ its
+co-located `playwright.config.js` and `authenticate.js`) drives the bound
+Sheet's harness menu and asserts the demo's sheet tabs appear. It is a
+**periodic / manual gate, not a PR gate** — run it headed against a deployed
+host before a UI-heavy release; it skips when `SHEET_URL` is unset. See the
+spec's header for the run procedure.
+
 A library's harness is standalone and bound only to that library's test
 fixture — it is not vendored into consumer demos and does not register into
 any cross-library aggregator.
