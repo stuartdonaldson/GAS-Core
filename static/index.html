@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GAS-Core: Static Frontend for Apps Script — Live Demo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128640;</text></svg>">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 760px; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.5;
+    color: #1a1a1a; background: #fff;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #121212; } }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; border-bottom: 1px solid #8883; padding-bottom: .3rem; }
+  code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; }
+  pre { background: #8881; padding: .75rem; border-radius: 6px; overflow-x: auto; }
+  .field { margin: .6rem 0; }
+  .field label { display: block; font-size: .85rem; opacity: .8; margin-bottom: .2rem; }
+  input[type=text] {
+    width: 100%; box-sizing: border-box; padding: .5rem; border-radius: 6px;
+    border: 1px solid #8886; background: transparent; color: inherit; font-family: inherit;
+  }
+  button {
+    padding: .5rem 1rem; border-radius: 6px; border: 1px solid #8886; cursor: pointer;
+    background: #2563eb; color: #fff; font-size: .9rem;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { margin-top: .6rem; font-size: .85rem; }
+  .status.ok { color: #1a7f37; } .status.err { color: #cf222e; }
+  @media (prefers-color-scheme: dark) { .status.ok { color: #4ade80; } .status.err { color: #f87171; } }
+  .card { border: 1px solid #8884; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  footer { margin-top: 3rem; font-size: .8rem; opacity: .65; }
+  a { color: #2563eb; }
+</style>
+</head>
+<body>
+
+<h1>GAS-Core: Static Frontend for Apps Script</h1>
+<p>
+  Live demo companion to
+  <a href="https://github.com/stuartdonaldson/GAS-Core/blob/main/best-practices/gas-static-frontend/README.md">
+    best-practices/gas-static-frontend</a> — porting an Apps Script <code>HtmlService</code> page
+  to a static page that calls the GAS web app as a plain JSON API. This page is itself the static
+  half of that pattern: a top-level document, hosted on GitHub Pages, with no server behind it
+  except whatever GAS backend you point it at below.
+</p>
+
+<div class="card">
+  <h2 style="margin-top:0; border:none;">1. Point this page at a GAS backend</h2>
+  <p>
+    Deploy <code>gas-backend-example.js</code> + <code>appsscript.json.example</code> from the
+    same folder as a GAS web app (<code>clasp deploy</code>, access
+    <code>ANYONE_ANONYMOUS</code>), then paste its <code>/exec</code> URL here. Stored only in
+    this browser's <code>localStorage</code> — never sent anywhere but the URL you provide.
+  </p>
+  <div class="field">
+    <label for="webappUrl">GAS web app /exec URL</label>
+    <input type="text" id="webappUrl" placeholder="https://script.google.com/macros/s/…/exec">
+  </div>
+  <button id="pingBtn">Call "ping" action</button>
+  <div id="pingStatus" class="status"></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; border:none;">2. Sign in with Google (identity check)</h2>
+  <p>
+    Uses only the non-sensitive <code>openid</code>/<code>email</code>/<code>profile</code>
+    scopes — no consent screen, no access to your Drive/Gmail/Calendar. See the README's
+    "identity &amp; access control" section for why this doesn't require Google app verification.
+    Requires a GIS OAuth client ID with this page's origin registered as an authorized JavaScript
+    origin.
+  </p>
+  <div class="field">
+    <label for="clientId">Google Identity Services client ID</label>
+    <input type="text" id="clientId" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+  </div>
+  <div id="gisButtonHost"></div>
+  <div id="gisStatus" class="status"></div>
+</div>
+
+<footer>
+  Reference implementation only — no data leaves your browser except calls you explicitly make to
+  the backend URL you configure above. Source:
+  <a href="https://github.com/stuartdonaldson/GAS-Core/tree/main/static">static/</a> ·
+  <a href="https://github.com/stuartdonaldson/GAS-Core/tree/main/best-practices/gas-static-frontend">best-practices/gas-static-frontend</a>
+</footer>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+  // -- Config persistence -------------------------------------------------------------------
+  var webappUrlInput = document.getElementById('webappUrl');
+  var clientIdInput = document.getElementById('clientId');
+  webappUrlInput.value = localStorage.getItem('gasCoreDemo.webappUrl') || '';
+  clientIdInput.value = localStorage.getItem('gasCoreDemo.clientId') || '';
+  webappUrlInput.addEventListener('change', function () {
+    localStorage.setItem('gasCoreDemo.webappUrl', webappUrlInput.value.trim());
+  });
+  clientIdInput.addEventListener('change', function () {
+    localStorage.setItem('gasCoreDemo.clientId', clientIdInput.value.trim());
+    initGis_();
+  });
+
+  // -- CORS-safe fetch client (mirrors best-practices/gas-static-frontend/cors-fetch-client.html)
+  // text/plain, not application/json -- avoids a CORS preflight OPTIONS request GAS doesn't
+  // handle usefully. See ../best-practices/gas-static-frontend/README.md Step 1.
+  function callApi(webappUrl, action, payload) {
+    var body = Object.assign({}, payload, { action: action });
+    return fetch(webappUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Server returned HTTP ' + res.status);
+      return res.json();
+    }).then(function (json) {
+      if (!json.ok) throw new Error(json.error || 'Server reported an error with no detail');
+      return json;
+    });
+  }
+
+  function setStatus_(el, ok, message) {
+    el.textContent = message;
+    el.className = 'status ' + (ok ? 'ok' : 'err');
+  }
+
+  // -- 1. ping ------------------------------------------------------------------------------
+  document.getElementById('pingBtn').addEventListener('click', function () {
+    var url = webappUrlInput.value.trim();
+    if (!url) return setStatus_(document.getElementById('pingStatus'), false, 'Enter a web app URL first.');
+    var statusEl = document.getElementById('pingStatus');
+    setStatus_(statusEl, true, 'Calling…');
+    callApi(url, 'ping', {})
+      .then(function (json) {
+        setStatus_(statusEl, true, 'OK — server time ' + json.serverTimeIso + ' (version ' + json.version + ')');
+      })
+      .catch(function (err) { setStatus_(statusEl, false, 'Failed: ' + err.message); });
+  });
+
+  // -- 2. Google Identity Services sign-in ---------------------------------------------------
+  function initGis_() {
+    var clientId = clientIdInput.value.trim();
+    var host = document.getElementById('gisButtonHost');
+    host.innerHTML = '';
+    if (!clientId || typeof google === 'undefined' || !google.accounts) return;
+    google.accounts.id.initialize({ client_id: clientId, callback: handleGisCredential_ });
+    google.accounts.id.renderButton(host, { type: 'standard', theme: 'outline', size: 'large' });
+  }
+
+  function handleGisCredential_(response) {
+    var idToken = response.credential;
+    var statusEl = document.getElementById('gisStatus');
+    var claims = decodeJwtPayloadForDisplayOnly_(idToken);
+    setStatus_(statusEl, true, 'Signed in as ' + (claims && claims.email) + ' (unverified, client-side decode) — verifying with backend…');
+
+    var url = webappUrlInput.value.trim();
+    if (!url) {
+      setStatus_(statusEl, true, 'Signed in as ' + (claims && claims.email) + ' (client-side only — set a web app URL above to verify server-side too).');
+      return;
+    }
+    callApi(url, 'whoami', { idToken: idToken })
+      .then(function (json) {
+        setStatus_(statusEl, true, 'Server-verified: sub=' + json.sub + ', email=' + json.email + ', allowlisted=' + json.allowlisted);
+      })
+      .catch(function (err) { setStatus_(statusEl, false, 'Server verification failed: ' + err.message); });
+  }
+
+  function decodeJwtPayloadForDisplayOnly_(jwt) {
+    try {
+      var payload = jwt.split('.')[1];
+      var json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      return JSON.parse(json);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  window.addEventListener('load', function () {
+    // GIS's script tag is async; poll briefly until it's ready rather than racing it.
+    var tries = 0;
+    (function waitForGis() {
+      if (typeof google !== 'undefined' && google.accounts) return initGis_();
+      if (++tries > 50) return; // ~5s — give up quietly, button just won't render
+      setTimeout(waitForGis, 100);
+    })();
+  });
+</script>
+</body>
+</html>

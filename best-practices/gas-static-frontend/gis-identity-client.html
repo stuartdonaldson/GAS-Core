@@ -1,0 +1,49 @@
+<!--
+  Client-side Google Identity Services (GIS) sign-in snippet. Pairs with
+  gas-backend-example.js's demoWhoAmI_() and appsscript.json.example (ANYONE_ANONYMOUS +
+  USER_DEPLOYING). See ../README.md's "What a first-party page unlocks next" section for the
+  full rationale: this obtains a signed identity for the visitor using only the non-sensitive
+  openid/email/profile scopes (no consent screen, no access to the visitor's own Google data) —
+  it must still be verified SERVER-SIDE before being trusted for anything privileged. Decoding
+  the JWT client-side (as the demo status line below does) is display-only, never a substitute
+  for verifyGoogleIdToken_() on the backend.
+
+  Requires a real GIS OAuth client ID (Google Cloud Console -> APIs & Services -> Credentials ->
+  OAuth 2.0 Client ID, type "Web application", with this page's origin under Authorized
+  JavaScript origins). Set GOOGLE_CLIENT_ID before use.
+-->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<div id="g_id_onload"
+     data-client_id="REPLACE_WITH_YOUR_GIS_CLIENT_ID"
+     data-callback="handleGisCredential_"
+     data-auto_select="false">
+</div>
+<div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"></div>
+
+<script>
+  var GOOGLE_CLIENT_ID = 'REPLACE_WITH_YOUR_GIS_CLIENT_ID'; // must match data-client_id above
+
+  /** GIS calls this with { credential: <JWT> } once the visitor completes sign-in / One Tap. */
+  function handleGisCredential_(response) {
+    var idToken = response.credential;
+    // Display-only: never trust this for access control, only the server-verified result is.
+    var claims = decodeJwtPayloadForDisplayOnly_(idToken);
+    onGisIdentityResolved_(idToken, claims);
+  }
+
+  function decodeJwtPayloadForDisplayOnly_(jwt) {
+    try {
+      var payload = jwt.split('.')[1];
+      var json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      return JSON.parse(json);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** Override this — called with (idToken, displayOnlyClaims) once sign-in resolves. Typical
+   *  body: callApi('whoami', { idToken: idToken }).then(renderVerifiedIdentity). */
+  function onGisIdentityResolved_(idToken, displayOnlyClaims) {
+    console.log('GIS identity resolved (unverified, display-only):', displayOnlyClaims);
+  }
+</script>

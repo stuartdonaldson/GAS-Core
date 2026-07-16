@@ -1,0 +1,31 @@
+<script>
+  // Minimal CORS-safe client for calling a GAS web app's doPost JSON API from a static page.
+  // See ../README.md Step 1 and "Details the first pass missed" #4: Content-Type must stay
+  // text/plain (NOT application/json), or the browser sends a CORS preflight OPTIONS request
+  // that Apps Script's web app doesn't handle usefully, and every call silently fails.
+  //
+  // Configure WEBAPP_URL before use (paste your deployment's /exec URL, or read it from a
+  // query param / localStorage — see static/src/index.html for a worked example).
+  var WEBAPP_URL = ''; // e.g. 'https://script.google.com/macros/s/AKfycb.../exec'
+
+  /**
+   * Calls the GAS web app's doPost dispatcher with { action, ...payload } as the JSON body.
+   * Rejects on any failure (HTTP error, bad JSON, {ok:false}) so every caller has one .catch().
+   * Pairs with the doPost dispatcher shape in gas-backend-example.js — it expects exactly this
+   * body shape and always responds with either {ok:true, ...} or {ok:false, error}.
+   */
+  function callApi(action, payload) {
+    var body = Object.assign({}, payload, { action: action });
+    return fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Server returned HTTP ' + res.status);
+      return res.json();
+    }).then(function (json) {
+      if (!json.ok) throw new Error(json.error || 'Server reported an error with no detail');
+      return json;
+    });
+  }
+</script>

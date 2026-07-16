@@ -19,6 +19,7 @@ Reusable patterns and tools derived from working implementations in active proje
 | [`gas-email-templating/`](gas-email-templating/README.md) | HTML email templating with HtmlService scriptlets, delivery policy (test-mode redirect + Drive audit record), XSS safety | F3Go30 |
 | [`gas-acceptance-testing/`](gas-acceptance-testing/README.md) | End-to-end acceptance/scenario testing of a GAS app from Python: entry-point-as-call-site technique (incl. single-shot scheduled triggers), `run_fixture` dispatcher, completion-signal + artifact download, doc-scoped isolation, 6-min batching. GAS stack adapter for DevStandard `atdd-bdd.md`. | GActionSheet |
 | [`gas-test-reporting/`](gas-test-reporting/README.md) | Allure test reporting for projects with pytest + Playwright: per-run isolation, deployment stamping via ledger, history trends, failure categorisation, WSL2 serve, smoke test pattern. | GActionSheet |
+| [`gas-static-frontend/`](gas-static-frontend/README.md) | Porting an `HtmlService` page to a static HTML/JS front end (GitHub Pages, etc.) calling the GAS web app as a JSON API: CORS spike, config/identity routing, favicon/title/bookmarkable-URL fixes, build/publish pipeline, iOS/Safari 7-day storage cap, first-party GIS identity & access control. | F3Go30 |
 
 ---
 
