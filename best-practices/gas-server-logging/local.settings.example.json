@@ -17,9 +17,28 @@
     "",
     "initialFolderPath must be the local filesystem path where Google Drive for Desktop",
     "maps the INITIAL_FOLDER_ID folder. Used by Playwright tests to determine which",
-    "subfolder actually contains audio tracks, avoiding empty or archive folders."
+    "subfolder actually contains audio tracks, avoiding empty or archive folders.",
+    "",
+    "Axiom is optional (used by query-axiom.py and GasLogger.flush()'s exclusive",
+    "POST once configured). axiomToken is the INGEST token (write-only, set as the",
+    "GAS script property AXIOM_TOKEN); axiomQueryToken is a separate READ-ONLY token",
+    "used only by query-axiom.py / gas-log-helpers.js. Get both from the Axiom org's",
+    "Settings -> API Tokens page. Without these, GasLogger still works -- it just",
+    "writes Drive NDJSON only.",
+    "",
+    "webappTestUrl/webappSecret are required only for gas-log-helpers.js's",
+    "axiomProbeLatency/assertNoLog sentinel-watermark helpers (see README.md",
+    "'Sentinel-Watermark Waits'). They point at a deployment/test-only WebApp route",
+    "that calls GasLogger.log('test.axiom_probe', {sentinel}) + flush() -- the probe",
+    "must go through the real GAS->Axiom path, not a test-process-direct-to-Axiom",
+    "shortcut, or it would understate real ingest latency."
   ],
   "initialFolderId": "DRIVE_FOLDER_ID_OF_ROOT_AUDIO_FOLDER",
   "initialFolderPath": "/path/to/locally/mapped/initial/folder",
-  "gasLogDir": "/path/to/locally/mapped/log-folder"
+  "gasLogDir": "/path/to/locally/mapped/log-folder",
+  "axiomDataset": "YOUR_AXIOM_DATASET_NAME",
+  "axiomToken": "YOUR_AXIOM_INGEST_TOKEN",
+  "axiomQueryToken": "YOUR_AXIOM_QUERY_TOKEN",
+  "webappTestUrl": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
+  "webappSecret": "YOUR_DEPLOYMENT_TEST_SECRET"
 }
