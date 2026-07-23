@@ -17,6 +17,57 @@ Google Apps Script web apps are published at stable URLs. Each `clasp deploy` cr
 
 ---
 
+## Deployment Models: One Script Project vs Two
+
+*(Fresh capture 2026-07-22 from NUUC-Dispatch/F3Go30/GActionSheet experience — refine as
+more projects exercise it.)*
+
+Two distinct models for separating TEST/SIT from PROD exist across active projects.
+The rest of this document describes the mechanics of **Model A**; choose deliberately
+before provisioning, because the choice is driven by constraints, not preference.
+
+### Model A — single script project, named deployments
+
+One script project; `TEST-WEB-APP` and `PROD-WEB-APP` deployments created **once** in
+the editor with the anchor string in their descriptions, then forever **redeployed in
+place** (`clasp deploy -i <id>`) so both `/exec` URLs stay stable. The description
+anchor is the discovery key — no config file of deployment ids.
+
+- **Used by:** AudioTrackCombiner, GActionSheet, NUUC-Dispatch.
+- **Everything is shared between envs:** one Script Properties store, one GCP project
+  binding, one OAuth consent screen, one quota pool. TEST and PROD differ only in which
+  immutable code *version* their deployment pins.
+- **Consequences:** env-specific config must be modeled inside the shared properties
+  store (or avoided); a runaway TEST can consume PROD's quota; but provisioning happens
+  once, and code cannot drift between envs — they are versions of the same project.
+
+### Model B — two script projects (prod + sit/test)
+
+Fully separate script projects per environment: separate script ids, deployments,
+Script Properties, triggers, and (the usual driver) separate **bound containers**.
+Tooling must key everything per env — see F3Go30's `tools/callWebapp.js` `ENV_MAP`
+(`testDeploymentId`/`templateDeploymentId` + a **separate admin secret per env**).
+
+- **Used by:** F3Go30.
+- **Why F3Go30 had no choice:** the production script is bound to a production
+  spreadsheet; SIT needs its own spreadsheet, and a container-bound script belongs to
+  exactly one container → separate project per env.
+- **Consequences:** true isolation (data, properties, quotas, blast radius), at the
+  cost of provisioning everything twice (GCP binding, consent screen, scopes,
+  deployments) and a standing config-drift risk between the two projects.
+
+### Decision drivers
+
+| Driver | Pushes toward |
+|---|---|
+| Script is **container-bound** and envs need different containers (spreadsheet/doc/form) | **Model B** — forced; a bound script has exactly one container |
+| Project is a **Workspace add-on / Marketplace app** | **Model A** — the Marketplace SDK is one-per-GCP-project and a second add-on doubles consent-screen/listing overhead; GActionSheet would *ideally* isolate as Model B but went Model A for this reason, accepting the GCP-coordinated test/prod deployment discipline |
+| Envs need isolated **Script Properties / triggers / quota** | Model B |
+| Minimal provisioning + zero code-drift risk between envs | Model A |
+| Standalone web app with no bound container | Model A unless an isolation driver above applies |
+
+---
+
 ## Problem
 
 `clasp deploy` without arguments creates a new deployment with a new URL each time. Sharing a stable URL (e.g. with testers or embedded in other systems) requires keeping a specific deployment ID and redeploying to it in place. Doing this manually in the Apps Script editor is error-prone and leaves no audit trail. Additionally, without a version stamp, it is impossible to tell from the running app which code version is deployed.
