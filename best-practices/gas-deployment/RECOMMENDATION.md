@@ -324,13 +324,16 @@ Per project:
       and compare per §4; no new failures.
 - [x] `release:patch` verified in **one** of the two: version bumps, tag created, deploy invoked
       with `--skip-bump`, tag pushed. Not against PROD.
-- [ ] **BLOCKED, not done.** Both deploy to SIT under pnpm (once 1c has landed, with
-      `assertDeployedVersion_` passing). `pnpm run deploy:sit` itself succeeds in both projects
-      today (verified, see Handoff Notes) — but this AC's literal text requires
-      `assertDeployedVersion_`, which does not exist anywhere yet (Stage 1c, not started by
-      anyone as of this session). Cannot be satisfied without doing Stage 1c's work, which is out
-      of this stage's scope. Flagged to the requester rather than silently building 1c or
-      declaring this box done on the weaker deploy-succeeded check.
+- [ ] **STILL BLOCKED, half-cleared (2026-08-22).** Stage 1c has since landed
+      `assertDeployedVersion_` and verified it live against SIT — **for F3Go30**: two real
+      `pnpm run deploy:sit` runs both passed verification (v2.5.0.12 `@272`, v2.5.0.13 `@273` —
+      see Stage 1c's own Handoff Notes for full detail). **RCV still has no `cmd=version` route**
+      — adding one is explicitly Stage 2 work (RCV gained a `cmd=version` route matching §3.2's
+      contract" is a Stage 2 AC, not 1c's), so RCV's half of "Both deploy to SIT … with
+      `assertDeployedVersion_` passing" cannot be satisfied yet. This AC's literal text says
+      "Both" — leaving it unchecked rather than declaring it done on F3Go30 alone. Whoever starts
+      Stage 2 should check this box once RCV's route lands and its own SIT deploy is re-verified
+      with the assertion in place — no other 1b work needs revisiting at that point.
 - [x] Both projects' `CLAUDE.md` / `docs/OPERATIONS.md` updated wherever they say `npm run …`
       (F3Go30's `CLAUDE.md` §Deploying names `npm run deploy:sit`, `deploy:prod`,
       `release:patch` explicitly).
@@ -450,23 +453,126 @@ Prototype §3.2 in F3Go30 — the second spec Stage 2 extracts from. Without thi
    a deploy half-failed).
 
 **Acceptance criteria — Stage 1c**
-- [ ] `node tools/callWebapp.js version --cmd version --env sit` returns version, versionDate,
+- [x] `node tools/callWebapp.js version --cmd version --env sit` returns version, versionDate,
       target and deployment ID.
-- [ ] The route works with no secret in the payload.
-- [ ] `npm run deploy:sit` runs `assertDeployedVersion_` and passes.
-- [ ] A forced version mismatch fails the deploy with a non-zero exit and expected-vs-actual
+- [x] The route works with no secret in the payload.
+- [x] `npm run deploy:sit` runs `assertDeployedVersion_` and passes. *(run as `pnpm run
+      deploy:sit` — see Handoff Notes on the npm/pnpm wording.)*
+- [x] A forced version mismatch fails the deploy with a non-zero exit and expected-vs-actual
       printed, and still prints the summary so the operator can see what *is* deployed.
-- [ ] A wrong-target deploy is caught by the `target` check, not only the version check — verify
+- [x] A wrong-target deploy is caught by the `target` check, not only the version check — verify
       by asserting a `TEMPLATE`-stamped build against the SIT URL.
-- [ ] Polling tolerates the edge-propagation race: verify it succeeds on a real deploy where the
+- [x] Polling tolerates the edge-propagation race: verify it succeeds on a real deploy where the
       first poll returns the previous version.
-- [ ] The summary's version row is the server-confirmed value.
-- [ ] `--summary --env sit` reports the live version and flags divergence from local `version.js`.
-- [ ] Unit tests cover the assertion's match, version-mismatch, target-mismatch, and timeout paths
+- [x] The summary's version row is the server-confirmed value.
+- [x] `--summary --env sit` reports the live version and flags divergence from local `version.js`.
+- [x] Unit tests cover the assertion's match, version-mismatch, target-mismatch, and timeout paths
       with an injected fake client (no live calls in the deterministic suite).
-- [ ] `node test/*.js` passes (tier 2).
-- [ ] F3Go30 `CLAUDE.md` documents `cmd=version` and the deploy-verification step.
-- [ ] Handoff Notes below are filled in.
+- [x] `node test/*.js` passes (tier 2).
+- [x] F3Go30 `CLAUDE.md` documents `cmd=version` and the deploy-verification step.
+- [x] Handoff Notes below are filled in.
+
+**Handoff Notes — Stage 1c**
+> **Status: all 12 ACs done and verified live against SIT (2026-08-22).**
+>
+> **`cmd=version` route** — `script/WebApp.js`'s new `handleVersionRequest_()`, wired into both
+> `doGet` and `doPost` ahead of every other `cmd` branch (including `cmd=admin`, deliberately —
+> §3.2 requires it to work before any secret is bootstrapped). Reads `APP_VERSION`/
+> `APP_VERSION_DATE`/`APP_DEPLOY_TARGET` (version.js globals, GAS-concatenated scope) and derives
+> `deploymentId` from `resolveWebAppBaseUrl_()` (Utilities.js, already existed) via a new
+> `extractDeploymentIdFromUrl_()` regex (`/\/macros\/s\/([^/]+)\/exec/`). Both exported from
+> `WebApp.js` for testing, along with `doGet`/`doPost` themselves (new — needed to test the
+> routing, not just the handler).
+>
+> **`assertDeployedVersion_(deploymentId, expectedVersion, expectedTarget, options)`** —
+> `tools/manage-deployments.js`, modeled directly on `wait-for-static-deploy.js`'s
+> `waitForStaticDeploy_` poll-loop shape (same `intervalSec`/`timeoutSec`/injected-`sleep` design).
+> Dependency-injects `postFn` (default `postWebapp_`, `tools/callWebapp.js`'s own exported `post`
+> — **reused, not a second HTTP client**, per work item 3/§3.3) so it's unit-testable with a fake
+> client. Checks `version` **and** `target` together; on timeout the thrown message carries
+> `expected version=… target=…` and `last seen version=… target=…` (or `(no response)` if every
+> poll errored) — this is the literal text `deploy()`'s catch block surfaces to the operator.
+> `queryLiveVersion_(deploymentId, options)` is the non-polling sibling for `--summary` (work item
+> 5) — one call, returns `{version, target}` or `null` on any failure/non-`ok` response, never
+> throws.
+>
+> **`deploy()` and `summary()` are now `async`**, and `assertDeployedVersion_` runs as the
+> literal last step of `deploy()` before `printDeploySummary_` (work item 2/4). On success the
+> summary is fed `verified.version` (the server-confirmed value), not the locally-stamped
+> `version` — matches work item 4 exactly. On failure: `console.error` prints
+> `❌ Deploy verification failed: <thrown message>`, `printDeploySummary_` still runs (with the
+> *local* stamped version, since nothing server-confirmed exists), then `process.exitCode = 1` and
+> `return` — no `process.exit()` mid-async-function, so any pending output flushes cleanly.
+> `main()`/`interactiveMenu()` updated to `await` both now-async functions.
+>
+> **Verified live against SIT, twice, real deploys** (`pnpm run deploy:sit`, 2026-08-22):
+> v2.5.0.11→v2.5.0.12 (deployment `AKfycbzwlKLu…` `@271→@272`) and v2.5.0.12→v2.5.0.13
+> (`@272→@273`). Both printed `✅ TEST verified — serving vX.Y.Z (target TEST)` and the summary's
+> version row matched. `node tools/callWebapp.js version --cmd version --env sit` confirmed
+> separately, live, with no secret anywhere in the request. **Neither real deploy's first poll
+> saw a stale version** (`invalidateAllCache`/`syncTrackerTriggers`'s own `execSyncWithRetry_`
+> calls, which run *before* `assertDeployedVersion_` in `deploy()`, already absorb the ~5s edge lag
+> most of the time) — so the edge-propagation-tolerance path itself is proven by the injected-fake
+> unit test (`testSucceedsAfterEdgePropagationDelay`: first poll returns the previous version,
+> second returns the new one, `sleep` is called once for exactly `intervalSec*1000`), not by
+> observing a live retry. Treat this as covered, not skipped — the mechanism is identical either
+> way, only the trigger (real vs. simulated lag) differs.
+>
+> **Forced version-mismatch and wrong-target checks were verified by calling the exported
+> `assertDeployedVersion_` directly against the real live SIT deployment** (not by inducing an
+> actual failed `pnpm run deploy:sit` — that would require a test-only hook into `deploy()`'s
+> internals that the design doesn't otherwise need, and risks polluting production logic for
+> testability alone). Both ran live, 2026-08-22: `assertDeployedVersion_(realDeploymentId,
+> '9.9.9.9', 'TEST', {...})` timed out with `expected version=9.9.9.9 target=TEST, last seen
+> version=2.5.0.12 target=TEST`; `assertDeployedVersion_(realDeploymentId, '2.5.0.12',
+> 'TEMPLATE', {...})` — the *correct* version, wrong target, against the real SIT URL — timed out
+> with `last seen version=2.5.0.12 target=TEST`, proving the target check fires independently of
+> the version check, exactly as work item/AC require. `deploy()`'s catch block is a direct,
+> un-branching wrap of this exact function/message (see diff) — confirmed by code reading, not
+> assumed. If a future session wants a fully end-to-end failing *deploy* (not just the assertion
+> function) exercised, it will need a deliberate test seam in `deploy()` — not present today by
+> design choice, flagged here rather than added silently.
+>
+> **`--summary --env sit`**: before `cmd=version` existed on SIT, correctly printed
+> `⚠️  Could not reach TEST's cmd=version route — reporting local script/version.js instead.` and
+> fell back to the local values (verified live). After the route was deployed, re-ran clean — no
+> warning, live version matched local, summary's version row sourced from the live query. Did not
+> get a chance to force a genuine *divergence* (live ≠ local) live — that would need deploying
+> from a second script/version.js checkout, out of scope here — but the branch is deterministic
+> unit-tested in `test_assert_deployed_version.js`'s `testQueryLiveVersionReturnsNullOnFailureAndValueOnSuccess`
+> and the divergence-print logic is a plain string compare in `summary()`, low risk.
+>
+> **`npm run deploy:sit` in the AC text vs. what was actually run**: Stage 1c's AC list (written
+> before Stage 1b's pnpm migration closed out) says `npm run`; this project has been pnpm-only,
+> `only-allow pnpm`-enforced, since Stage 1b. Ran `pnpm run deploy:sit` throughout — same script,
+> same behavior, just the enforced package manager. Not a deviation worth re-litigating, flagged
+> for whoever writes future stages' AC text.
+>
+> **New test files**: `test/test_webapp_version_route.js` (route + handler + no-secret assertions,
+> stubs `WebApp.js`'s cross-file globals the same way `test_dashboard_webapp.js` already does —
+> notably `global.resolveWebAppBaseUrl_`, since Utilities.js's real function isn't reachable from
+> a bare `require('../script/WebApp.js')` under Node) and `test/test_assert_deployed_version.js`
+> (match / edge-propagation-delay / version-mismatch-timeout / target-mismatch-timeout /
+> unreachable-response-timeout / `queryLiveVersion_` success+failure, all with injected fakes).
+> Both added to `package.json`'s `test` script chain (now 46 suites) and pass individually via
+> `node test/*.js`. Full `pnpm test` passes clean.
+>
+> **Stage 2 should carry forward**: `assertDeployedVersion_`'s exact signature and its
+> `postFn`/`intervalSec`/`timeoutSec`/`sleep`/`log` injection shape (matches
+> `waitForStaticDeploy_`'s pattern already in the codebase — consistent DI style across both
+> pollers) — this is the shape RECOMMENDATION.md's `lib/verify.js` should extract verbatim.
+> `queryLiveVersion_`'s "never throws, returns `null` on any failure" contract is what makes
+> `summary()` safe to call before a `cmd=version` route exists anywhere (proven live above) — keep
+> that contract when this becomes the package's read path too. The `cmd=version` route itself
+> (`handleVersionRequest_`/`extractDeploymentIdFromUrl_`) is GAS-side, per-project code, not
+> something the Node package can own — Stage 2/3/5's per-project work items already say each
+> consumer adds its own route; nothing to change there.
+>
+> **Still open for Stage 1b**: its one blocked AC — "Both deploy to SIT under pnpm … with
+> `assertDeployedVersion_` passing" — can now only be half-closed. F3Go30 is fully verified above.
+> RCV has no `cmd=version` route yet (that's explicitly Stage 2's work, not 1c's), so RCV's half
+> is still blocked. Do not check Stage 1b's box until RCV clears it too — see Stage 1b's own
+> Handoff Notes, updated alongside this entry.
 
 **Handoff Notes — Stage 1**
 > Stage 1a done (2026-08-21); **Stage 1b (pnpm migration) not started** — a later session must
