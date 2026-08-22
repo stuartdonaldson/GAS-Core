@@ -16,11 +16,14 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-function writeLedgerEntry(root, targetKey, entry, { dir = 'deployment-ledger', log = console.log } = {}) {
+function writeLedgerEntry(root, targetKey, entry, { dir = 'deployment-ledger', log = console.log, stamp = true } = {}) {
   try {
     const ledgerDir = path.join(root, dir);
     fs.mkdirSync(ledgerDir, { recursive: true });
-    const record = { at: new Date().toISOString(), user: os.userInfo().username, ...entry };
+    // `stamp: false` means the consumer shaped the whole record (its ledger predates the package
+    // and has readers expecting the old key names) — write exactly what it returned, adding
+    // nothing, so the file stays one schema from its first line to its last.
+    const record = stamp ? { at: new Date().toISOString(), user: os.userInfo().username, ...entry } : { ...entry };
     fs.appendFileSync(path.join(ledgerDir, `${targetKey}.jsonl`), JSON.stringify(record) + '\n', 'utf8');
     return record;
   } catch (err) {
@@ -30,9 +33,10 @@ function writeLedgerEntry(root, targetKey, entry, { dir = 'deployment-ledger', l
 }
 
 /** Latest-deploy pointer, overwritten each time — what CI and smoke tests read. */
-function writeDeployMetadata(root, entry, { file = '.deploy-metadata.json', log = console.log } = {}) {
+function writeDeployMetadata(root, entry, { file = '.deploy-metadata.json', log = console.log, stamp = true } = {}) {
   try {
-    fs.writeFileSync(path.join(root, file), JSON.stringify({ at: new Date().toISOString(), ...entry }, null, 2) + '\n', 'utf8');
+    const record = stamp ? { at: new Date().toISOString(), ...entry } : { ...entry };
+    fs.writeFileSync(path.join(root, file), JSON.stringify(record, null, 2) + '\n', 'utf8');
     return true;
   } catch (err) {
     log(`⚠️  Could not write ${file} (${err.message}) — the deploy itself succeeded.`);

@@ -42,19 +42,32 @@ function constStamper({ file, versionConst = 'APP_VERSION', dateConst = 'APP_VER
  * .js or an .html file (GActionSheet's Version.js, PracticeMix's version.html). The whole object
  * literal is rewritten, so keys the project added by hand are NOT preserved — the object is
  * generated output, which is exactly the property #5 says it must have.
+ *
+ * Two knobs exist because the GAS runtime reads these keys by name, and renaming them in a live
+ * project would be a behaviour change (§5 puts those out of scope):
+ *   - `fields` renames the four standard keys. GActionSheet's runtime reads `BUILD_INFO.buildDate`
+ *     and `BUILD_INFO.webappUrl`, not `date`/`webAppUrl`.
+ *   - `extraFields` may be a function of the stamp context, because a project-specific field can
+ *     legitimately vary per target — GActionSheet's `env` ('test'/'production'/'dev') is the
+ *     source of truth for its Axiom `env` column, and is NOT the same vocabulary as `target`
+ *     ('TEST'/'PRODUCTION'), which the deploy-verification contract compares against.
  */
-function buildInfoStamper({ file, constName = 'BUILD_INFO', extraFields = {} } = {}) {
+function buildInfoStamper({ file, constName = 'BUILD_INFO', fields = {}, extraFields = {} } = {}) {
   if (!file) throw new Error('buildInfoStamper requires a { file } path relative to the project root');
-  const stamp = ({ root, label, version, now, webAppUrl, log = console.log }) => {
+  const key = {
+    version: 'version', date: 'date', target: 'target', webAppUrl: 'webAppUrl', ...fields,
+  };
+  const stamp = (ctx) => {
+    const { root, label, version, now, webAppUrl, log = console.log } = ctx;
     const filePath = path.join(root, file);
     const src = fs.readFileSync(filePath, 'utf8');
 
     const payload = {
-      version,
-      date: now,
-      target: label,
-      ...(webAppUrl ? { webAppUrl } : {}),
-      ...extraFields,
+      [key.version]: version,
+      [key.date]: now,
+      [key.target]: label,
+      ...(webAppUrl ? { [key.webAppUrl]: webAppUrl } : {}),
+      ...(typeof extraFields === 'function' ? extraFields(ctx) : extraFields),
     };
     const literal = JSON.stringify(payload, null, 2);
 

@@ -59,7 +59,7 @@ node tools/manage-deployments.js --deploy-prod --skip-bump
 | `root` | Absolute project root. Everything else is relative to it. |
 | `settingsPath` / `pkgPath` / `claspPath` | Defaults: `local.settings.json`, `package.json`, `.clasp.json`. |
 | `rootDir` | `rootDir` written into `.clasp.json`. Default `script`. |
-| `stamper` | `constStamper({file})` or `buildInfoStamper({file})`. |
+| `stamper` | `constStamper({file})` or `buildInfoStamper({file, fields, extraFields})`. `fields` renames the standard keys (a GAS runtime reads them by name); `extraFields` may be a function of the stamp context, for a project field that varies per target. |
 | `targets` | Per-env config, see below. |
 | `envAliases` | Public env name → internal target key, e.g. `{ sit: 'test', prod: 'template' }`. |
 | `resolveDeployment` | Resolver chain. Default `standardChain(target.anchor)`. |
@@ -69,6 +69,9 @@ node tools/manage-deployments.js --deploy-prod --skip-bump
 | `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. |
 | `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
 | `verifyOptions` | `{ intervalSec, timeoutSec }` for `assertDeployedVersion`. |
+| `claspFields` | Object or `(ctx) => object` — the rest of `.clasp.json` (`projectId`, `parentId`, extension lists). `scriptId`/`rootDir` are always written last and cannot be overridden. |
+| `resolveBeforeStamp` | Resolve the deployment *before* the stamp, so the stamper receives `deploymentId` and `webAppUrl`. Needed when the version file carries the deployment's own /exec URL (GActionSheet's `BUILD_INFO.webappUrl`). Costs no extra `clasp deployments` call. |
+| `ledgerEntry` / `deployMetadata` | `(ctx) => object` — shape the ledger line / `.deploy-metadata.json` yourself when a project's records predate the package and have readers. A shaped record is written verbatim: the package adds no `at`/`user` keys to it. |
 
 Per target: `scriptIdKey`, `label`, `emoji`, `counter` (`build` | `version`), `deploymentIdKey`,
 `sheetIdKey`, `authKey`, `anchor`.

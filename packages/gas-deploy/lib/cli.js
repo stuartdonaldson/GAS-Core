@@ -38,8 +38,21 @@ function loadSettings_(settingsPath) {
   return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 }
 
-function writeClasp_(claspPath, scriptId, rootDir) {
-  fs.writeFileSync(claspPath, JSON.stringify({ scriptId, rootDir }, null, 2) + '\n', 'utf8');
+/**
+ * `.clasp.json` is generated from local.settings.json every run, so it always points at the
+ * target being deployed. `claspFields` carries the rest of the file: a bound-container project
+ * needs `parentId`, a project with a GCP project needs `projectId`, and a project whose sources
+ * are not all `.js` needs the extension lists — drop them and `clasp push` either fails or
+ * silently pushes a different file set. scriptId and rootDir are written last so a config can
+ * never accidentally override the target being deployed to.
+ */
+function writeClasp_(claspPath, scriptId, rootDir, extra = {}) {
+  fs.writeFileSync(claspPath, JSON.stringify({ ...extra, scriptId, rootDir }, null, 2) + '\n', 'utf8');
+}
+
+function claspFields_(config, ctx) {
+  const extra = config.claspFields;
+  return (typeof extra === 'function' ? extra(ctx) : extra) || {};
 }
 
 function saveSetting_(settingsPath, key, value) {
@@ -129,12 +142,29 @@ async function deploy(config, targetKey, options = {}) {
 
   log(`\n${target.emoji || '📦'}  Deploying to ${label} (${scriptId.slice(0, 12)}…)\n`);
 
-  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script');
+  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script', claspFields_(config, ctx));
   log(`✅ .clasp.json written (rootDir: ${config.rootDir || 'script'}, scriptId: ${scriptId.slice(0, 12)}…)`);
+
+  // Normally the deployment is resolved after the push (step 5). `resolveBeforeStamp` moves that
+  // one read-only `clasp deployments` call ahead of the stamp, because a lineage-A project stamps
+  // its own /exec URL into the version file (GActionSheet's BUILD_INFO.webappUrl — what its
+  // runtime getWebAppUrl() returns), and that URL is not knowable until the deployment is
+  // resolved. Opt-in rather than unconditional so consumers converted in Stage 2 keep their exact
+  // failure ordering: for them a resolution failure still happens after the push, not before.
+  let deploymentId = null;
+  if (config.resolveBeforeStamp) {
+    log(`\n🔎 Resolving the named deployment for ${label} (before stamping)…`);
+    deploymentId = resolveDeployment_(config, ctx, { exec }).deploymentId;
+    log(`   → ${deploymentId}`);
+  }
 
   const version = computeVersion(ctx.pkgPath, { counter: target.counter, skipBump: options.skipBump, log });
   const now = new Date().toISOString();
-  config.stamper({ root, label, version, now, log });
+  config.stamper({
+    root, label, version, now, log,
+    targetKey, target, settings, deploymentId,
+    webAppUrl: deploymentId ? `https://script.google.com/macros/s/${deploymentId}/exec` : undefined,
+  });
 
   // prePush hooks regenerate source that must be IN the push — F3Go30 rebuilds its "How it
   // Works" panels from the canonical markdown here, so an edit to that source lands on every
@@ -151,9 +181,11 @@ async function deploy(config, targetKey, options = {}) {
   exec('clasp push -f', { stdio: 'inherit', cwd: root, env: ctx.env });
   log(`\n✅ ${label} push complete.`);
 
-  log(`\n🔎 Resolving the named deployment for ${label}…`);
-  const { deploymentId } = resolveDeployment_(config, ctx, { exec });
-  log(`   → ${deploymentId}`);
+  if (!deploymentId) {
+    log(`\n🔎 Resolving the named deployment for ${label}…`);
+    deploymentId = resolveDeployment_(config, ctx, { exec }).deploymentId;
+    log(`   → ${deploymentId}`);
+  }
 
   // Captured (not 'inherit') so the revision is parseable, then echoed so nothing is lost.
   const description = (config.describeDeployment || ((v) => `v${v}`))(version, label, target);
@@ -175,8 +207,15 @@ async function deploy(config, targetKey, options = {}) {
   const hookCtx = { targetKey, target, label, version, now, deploymentId, revision, scriptId, settings, root, env: ctx.env };
   await runPostDeploy_(config.postDeploy || [], hookCtx, { log, errorLog });
 
-  writeLedgerEntry(root, targetKey, { target: label, version, deploymentId, revision, scriptId }, { log });
-  writeDeployMetadata(root, { target: label, version, deploymentId, revision, scriptId }, { log });
+  // The default record shape is the package's. A project whose ledger already has downstream
+  // readers (GActionSheet's write-environment.py and pipeline report read `timestamp`/`version`/
+  // `description`/`url`) supplies its own shaper so adopting the package does not silently break
+  // them — the file is history, and rewriting its schema would orphan every existing line.
+  const defaultRecord = { target: label, version, deploymentId, revision, scriptId };
+  const ledgerRecord = config.ledgerEntry ? config.ledgerEntry(hookCtx) : defaultRecord;
+  writeLedgerEntry(root, targetKey, ledgerRecord, { log, stamp: !config.ledgerEntry });
+  writeDeployMetadata(root, config.deployMetadata ? config.deployMetadata(hookCtx) : defaultRecord,
+    { log, stamp: !config.deployMetadata });
 
   // Mandatory, non-skippable (§3.2). There is deliberately no option to turn this off.
   log(`\n🔍 Verifying ${label} is actually serving v${version}…`);
@@ -217,7 +256,7 @@ async function summary(config, targetKey) {
   const label = target.label;
 
   log(`\n${target.emoji || '📦'}  Reading current ${label} deployment state (${scriptId.slice(0, 12)}…)…`);
-  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script');
+  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script', claspFields_(config, ctx));
 
   const { deploymentId } = resolveDeployment_(config, ctx, { exec });
   // No `clasp deploy` stdout exists here, so this always takes resolveRevision's fallback branch.
