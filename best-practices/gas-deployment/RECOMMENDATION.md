@@ -927,6 +927,18 @@ now anyway; they are the reason the package is a package.
 >   `already_bootstrapped`, and the pipeline **warned, printed the retry command, and carried on**
 >   — the `required:false` contract exercised live, not just in a unit test.
 > - RCV `pnpm run test:live-sit` (both live smoke suites) passes.
+> - **Per-target auth proven live without deploying anything.**
+>   `node tools/manage-deployments.js --summary --env nuuc` resolved NUUC's *separate* script
+>   project (`1t8dC-Buza2q…`) and its own deployment (`AKfycbyCC3jr…` `@15`) under `nuucAuth` — a
+>   different Google account from sit/prod's `claspAuth`. This is the cheapest possible proof that
+>   auth resolution is per-target and not global, and **Stage 3/5 should use the same trick**: a
+>   read-only `--summary` against an environment you must not deploy tells you the whole auth and
+>   resolution chain works, and touches nothing. NUUC itself was **not** deployed and still serves
+>   `@15`.
+>   It also demonstrated `queryLiveVersion`'s "never throws, returns null" contract on a third
+>   environment: NUUC has no `cmd=version` route, so the summary printed
+>   `⚠️  Could not reach NUUC's cmd=version route — reporting the local stamped file instead.`
+>   and completed normally. Every project's first contact with the package will look like this.
 > - **"byte-comparable output" — scope it honestly.** The eight-row *summary block* is
 >   byte-identical to Stage 1's (same labels, same padding, full deployment ID). The *progress*
 >   lines are not: hooks are now announced with a `🪝 <name>…` line, and "Looking up active
