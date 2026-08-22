@@ -92,16 +92,7 @@ a completely separate Google account.
 | `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
 | `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
 | `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
-
-## `call-webapp` config
-
-| key | meaning |
-|---|---|
-| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. |
-| `authField` | Body field the secret goes in: `adminSecret`, `testToken`, `secret`, … |
-| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
-| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
-| `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
+| `postFn` | Opt-in transport override, passed through to `lib/webapp.js`'s `call()`. For a consumer whose webapp cannot answer a bare `lib/webapp.js` POST — PracticeMix is deployed `access:ANYONE` (not `ANYONE_ANONYMOUS`) and only answers a POST carrying a signed-in Google session, so its wrapper supplies a `postFn` that replays a captured Playwright session's cookies. Omit for the common case. |
 
 ## Deployment-ID resolution
 

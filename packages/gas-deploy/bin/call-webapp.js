@@ -121,6 +121,11 @@ async function run(config, argv = process.argv) {
     secret,
     authField: config.authField || 'adminSecret',
     ungatedActions: config.ungatedActions || [],
+    // Opt-in transport override for a consumer whose webapp requires something other than a
+    // bare POST — PracticeMix's is deployed access:ANYONE (not ANYONE_ANONYMOUS) and answers
+    // only to a POST carrying a signed-in Google session, so it supplies a postFn that replays
+    // a captured Playwright session's cookies instead of using lib/webapp.js's raw https POST.
+    ...(config.postFn ? { postFn: config.postFn } : {}),
   });
 
   console.log(JSON.stringify(result, null, 2));
