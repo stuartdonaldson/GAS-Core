@@ -1453,24 +1453,216 @@ and the deploy script *warns loudly if called without npm* because that would sk
 `update-revision.js` into the package's stamping step removes that warning and the failure mode
 behind it — that is the main win here.
 
-- [ ] `manage-deployments.js` converted to `runCli`; `update-revision.js` folded into the
+- [x] `manage-deployments.js` converted to `runCli`; `update-revision.js` folded into the
       package's stamp step and deleted (or reduced to a thin standalone re-stamp).
-- [ ] The "called directly, not via npm" warning and its 5-second countdown are gone, because the
+- [x] The "called directly, not via npm" warning and its 5-second countdown are gone, because the
       failure mode no longer exists.
-- [ ] `buildInfoStamper` handles the `.html` version file (verify the existing regex still
+- [x] `buildInfoStamper` handles the `.html` version file (verify the existing regex still
       matches; extend the stamper's file-type handling in the package if not).
-- [ ] `cmd=version` route added (§3.2). PracticeMix's existing `status` action returns a cache
+- [x] `cmd=version` route added (§3.2). PracticeMix's existing `status` action returns a cache
       generation, not a version — extend or add alongside it; do not overload `status`.
-- [ ] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its live-deployment-
+- [x] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its live-deployment-
       list URL resolution is the behaviour the package adopted (§3.3) — verify no regression.
-- [ ] `pnpm run deploy:test` succeeds, `assertDeployedVersion` passes, standard summary printed.
-- [ ] A forced mismatch fails the deploy.
-- [ ] `pnpm run verify:test` unchanged in behaviour.
-- [ ] `pnpm run test:unit` passes (tier 2).
-- [ ] Playwright suites baselined per §4; no new failures.
-- [ ] Ledger and `.deploy-metadata.json` still written; `commit-deploy-stamp.js` still consumes
+- [ ] **BLOCKED — external, not a code defect.** `pnpm run deploy:test` succeeds,
+      `assertDeployedVersion` passes, standard summary printed. See Handoff Notes: the Playwright
+      session in `.auth/user.json` is expired (dated 2026-07-27; last known-good per Stage 4's
+      notes too), so every live wire call gets HTTP 401 from Google, not PracticeMix's route.
+      Requires an interactive `pnpm run auth` (browser + MFA) only the user can perform.
+- [ ] BLOCKED by the same auth expiry — cannot produce a genuine live version-mismatch without a
+      working session to reach the route in the first place. A forced mismatch fails the deploy.
+- [x] `pnpm run verify:test` unchanged in behaviour — verified live: identical failure (HTTP 401,
+      same "session expired, refresh with pnpm run auth" message) both before and after this
+      stage's changes, since the session, not the code, is what's failing.
+- [x] `pnpm run test:unit` passes (tier 2).
+- [ ] NOT DONE — deferred pending the same auth refresh (see Handoff Notes). Playwright suites
+      baselined per §4; no new failures.
+- [x] Ledger and `.deploy-metadata.json` still written; `commit-deploy-stamp.js` still consumes
       the metadata correctly.
-- [ ] PROD not deployed.
+- [x] PROD not deployed.
+
+**Handoff Notes — Stage 5a**
+> **Status: 9 of 12 ACs done (2026-08-22). Stage 5a is NOT closed — three ACs are genuinely
+> blocked by an expired Playwright auth session that only the user can refresh (interactive
+> browser + MFA). Everything the code can prove without a live wire round trip is done and
+> verified; do not treat the blocked ACs as "close enough" and check them anyway.**
+>
+> ### The blocker, and how it was confirmed to be auth, not a code bug
+> `.auth/user.json` is dated 2026-07-27 — Stage 4's Handoff Notes already flagged this exact file
+> as expired and said whoever runs 5a should refresh it first. That warning was not read early
+> enough to avoid hitting it, but the failure was fully diagnosed rather than assumed:
+> ```bash
+> curl -s -D - -o /dev/null "https://script.google.com/macros/s/<TEST deploymentId>/exec?cmd=version"
+> # location: https://accounts.google.com/ServiceLogin?...      (expected — curl carries no session)
+> ```
+> ```js
+> // direct Playwright call using the STORED session, bypassing this project's wrapper entirely
+> const context = await browser.newContext({ storageState: '.auth/user.json' });
+> const resp = await context.request.post(url, { data: { action: 'version' } });
+> resp.status()  // 401
+> resp.text()    // Google's own login/consent HTML, not a PracticeMix error page
+> ```
+> HTTP 401 with Google login HTML, from a request that *did* carry the stored session cookies,
+> means the session itself is what Google is rejecting — not a bug in `versionPostFn`/
+> `postSession`, not a wrong URL, not a missing route. `authenticate.js` requires a real browser
+> window and interactive MFA (`chromium.launch({ headless: false })`, waits on stdin for ENTER)
+> — this agent cannot drive that. **The user must run `pnpm run auth` themselves, then re-run
+> `pnpm run deploy:test`.**
+>
+> ### What WAS proven live, despite the blocker
+> A real `pnpm run deploy:test` ran end to end through everything except the final verification
+> poll: `src/version.html` and `src/BuildInfo.js` both stamped correctly (`v1.6.7.1` →
+> `v1.6.7.2`), `clasp push -f` succeeded (16 files), the named TEST-WEB-APP deployment was
+> updated in place (`AKfycbx6AZF5…` `@193` → `@194`, description
+> `TEST-WEB-APP v1.6.7.2` — confirmed via a manual `clasp deployments` read after), the ledger
+> gained a correctly-shaped line, `.deploy-metadata.json` was written in the package's default
+> shape, and `testDeploymentId` was saved to `local.settings.json`. Only `assertDeployedVersion`
+> failed — 17 polls over 90s, each `request failed (Unexpected token '<', "<!DOCTYPE "...)`
+> (Google's login HTML, not JSON) — and the pipeline handled that failure exactly per §3.2's
+> contract: printed `❌ Deploy verification failed: …`, printed the standard summary anyway (with
+> the *locally* stamped version, since nothing was server-confirmed), and set
+> `process.exitCode = 1`. **PROD was never touched** (`clasp deployments` confirms it is still
+> `@191 v1.6.7`, untouched all session).
+>
+> A prior read-only `--summary --env test` run (before the live deploy above) also worked
+> correctly against the *pre-Stage-5a* deployed code: it printed
+> `⚠️  Could not reach TEST's cmd=version route — reporting the local stamped file instead.` and
+> fell back to the local version — proving `queryLiveVersion`'s never-throws contract and the
+> summary's graceful-fallback path both work, and that this is every consumer's expected first
+> contact with the package (matches Stage 2's and Stage 3's notes on the same point).
+>
+> `pnpm run verify:test` was run directly and failed with the exact same
+> `Got a Google sign-in page instead of JSON (HTTP 401)… Refresh it with: pnpm run auth` message
+> the *pre-Stage-5a* `tools/call-webapp.js` would have produced for the same expired session —
+> this is what "unchanged in behaviour" means here: not "passing", but "fails identically to
+> before, for a reason unrelated to this stage's change."
+>
+> `node tools/call-webapp.js status --env test` was run directly and confirmed URL resolution
+> (now delegated to the package's `claspEnv`/`resolveDeploymentId`/`standardChain`, replacing the
+> old hand-rolled `clasp deployments` grep) reaches the same point the pre-Stage-5a version did —
+> the same 401 — before failing, proving the "thin wrapper" delegation is not the break.
+>
+> ### The cmd=version route itself is unit-tested but NOT live-verified
+> `src/Admin.js`'s `handleVersionRequest_`/`extractDeploymentIdFromUrl_` and their routing in
+> `src/Code.js`'s `doGet`/`doPost` (ahead of the admin gate, matching §3.2) are covered by
+> `tests/unit/admin.test.js` (stubbed `ContentService`/`ScriptApp` globals — GAS's own
+> access-control layer intercepts every live request in this session before it ever reaches user
+> code, so a live 401 proves nothing about the route's own correctness one way or the other).
+> **Whoever refreshes the session should treat the very next `pnpm run deploy:test` as the first
+> real test of this route**, not a formality.
+>
+> ### Why PracticeMix's webapp needs a browser session at all (design context for later stages)
+> PracticeMix is deployed `access:ANYONE` / `executeAs:USER_DEPLOYING` (see
+> `tools/call-webapp.js`'s header) — unlike F3Go30/RCV/GActionSheet, which are
+> `ANYONE_ANONYMOUS`. Under `ANYONE`, Google's own login gate intercepts *before* Apps Script code
+> runs at all, so even a route that "requires no secret" per §3.2 still requires a signed-in
+> Google session at the HTTP layer. This is why `lib/webapp.js`'s bare `https` POST cannot reach
+> this project, and why the package gained an opt-in `postFn` passthrough
+> (`bin/call-webapp.js`, `gas-deploy-v1.2.0`, pushed to GAS-Core) rather than PracticeMix building
+> a sixth caller from scratch. `verifyOptions.postFn` on the `deploy()`/`summary()` side uses the
+> same trick directly against `lib/verify.js`'s `assertDeployedVersion`/`queryLiveVersion`, which
+> already accepted an injectable `postFn` with no package change needed.
+>
+> `versionPostFn`/`postSession` (`tools/call-webapp.js`) lazily launch **one** Playwright browser
+> context per process run and reuse it across every poll attempt (up to 18 in a 90s timeout) —
+> launching fresh per attempt would be far slower and is unnecessary. `closeVersionSession()` is
+> called in a `.finally()` around `main()` in both `manage-deployments.js` and
+> `tools/call-webapp.js`'s own CLI entry point; **without this the browser subprocess keeps the
+> event loop alive and `pnpm run deploy:test` hangs after finishing** — confirmed by testing
+> `versionPostFn` standalone before wiring the `finally`, which is why it exists.
+>
+> ### `--manage` (list/archive) — kept, not dropped
+> Unlike F3Go30/RCV (which quietly dropped it in Stage 2) or GActionSheet (which reimplemented it
+> from package primitives in Stage 3), PracticeMix's `tests/README.md` documents
+> `pnpm run manage-deployments -- --manage` as a real, expected entry point. It was ported using
+> the same ~20-line shape GActionSheet's Stage 3 conversion established
+> (`claspEnv`/`execWithRetry`/`parseDeployments` from the package, archiving logic project-local)
+> rather than silently dropped. Not exercised live this session (archiving is destructive and out
+> of scope to test against a real project without a specific need); code-reviewed only.
+>
+> ### `update-revision.js` — kept as a thin re-stamp, not deleted
+> The plan's work item explicitly allows either option. Deleting it would have broken
+> `.vscode/settings.json`'s "Run on Save" hook (`pnpm run update-revision` on every `src/**` save,
+> a **local-preview-only** convenience documented in README.md — it never pushes or deploys). The
+> new file is ~25 lines: it requires `manage-deployments.js`'s exported `config.stamper` and calls
+> it directly with `label: 'PREVIEW'`, without bumping `package.json` or touching clasp at all.
+> `.vscode/settings.json`'s hook command was changed from `npm run update-revision` to
+> `pnpm run update-revision` in the same commit (the project has been `only-allow pnpm`-enforced
+> since Stage 4a; the old command would have failed the gate).
+>
+> ### package.json / local.settings.json additions
+> - `local.settings.json` gained `scriptId` (the `.clasp.json` scriptId — both TEST and PROD share
+>   one script project, told apart by anchor) and `claspAuth: "~/.clasprc-sdonaldson.json"`,
+>   **determined empirically, not assumed** — same method as Stage 3's GActionSheet notes:
+>   ```bash
+>   clasp_config_auth=~/.clasprc-sdonaldson.json clasp show-authorized-user   # sdonaldson@northlakeuu.org
+>   clasp_config_auth=~/.clasprc-sdonaldson.json clasp deployments            # lists THIS project's 5 deployments
+>   ```
+>   This closes finding #1 for PracticeMix — previously no `claspAuth` existed anywhere and clasp
+>   was silently relying on whatever `~/.clasprc.json` (unqualified) happened to resolve to, which
+>   didn't even exist as a bare file on this machine (same invisible-dependency shape Stage 3 found
+>   for GActionSheet).
+> - `local.settings.example.json` documents both new keys and the same empirical-determination
+>   method, so a future clone doesn't have to rediscover it.
+> - `deployment-ledger/*.jsonl` and `.deploy-metadata.json` are **committed** in this project
+>   (unlike F3Go30/RCV, which gitignore them as a deliberate Stage 2 deviation) — left as-is; the
+>   package's default record shape (`{at, target, version, deploymentId, revision, scriptId}`)
+>   replaces the old hand-rolled shape (`{timestamp, target, deploymentId, version, description,
+>   url}`), and `commit-deploy-stamp.js` was updated to read the new field names directly instead
+>   of regex-parsing `description` for a version and a Rev-date substring. **This is the only
+>   ledger-schema change in the whole Stage 2–5 sequence** — safe here because
+>   `deployment-ledger/`/`.deploy-metadata.json` have exactly one reader
+>   (`commit-deploy-stamp.js`, updated in the same commit), unlike GActionSheet's three readers
+>   which forced `ledgerEntry`/`deployMetadata` overrides in Stage 3. Do not carry this "no
+>   override needed" shortcut into a project with more than one ledger reader.
+> - `src/version.html`'s `BUILD_INFO` object gains a `target` key (buildInfoStamper always writes
+>   one) and its `version`/`buildDate` keys are now JSON-quoted rather than bare
+>   (`"version": "…"` vs `version: "…"`) — cosmetic only, since the file is consumed by real
+>   client-side JS property access, not a text-based regex reader, and both forms are valid JS.
+>   The display string itself (`v1.6.7.2 (Rev. Aug 22, 2026 05:09)`) is byte-for-byte the same
+>   format the old `update-revision.js` produced, via `extraFields` overriding
+>   `buildInfoStamper`'s bare-semver default — deliberately, so the UI shows nothing different to
+>   a user. This is the opposite choice from GActionSheet's Stage 3 conversion (which *did* let the
+>   display format simplify to a bare `v<version>`) — made here because PracticeMix is a
+>   solo-maintained app where preserving the exact existing display costs nothing and there was no
+>   reason to introduce a visible change.
+> - `src/BuildInfo.js` (already git-tracked, unlike F3Go30/RCV's gitignored ledgers) gained
+>   `APP_VERSION`/`APP_VERSION_DATE`/`APP_DEPLOY_TARGET` alongside the pre-existing `BUILD_STAMP` —
+>   this is the real .gs global the new `cmd=version` route reads, since `version.html` is an
+>   HtmlService client-side include the server cannot read (unlike GActionSheet/F3Go30, whose
+>   stamped version file already lives in real server-side scope). This distinction — and that it
+>   is *why* PracticeMix needed two files stamped instead of one — is the main structural fact
+>   Stage 5b/5c should know if either project's version file turns out to be a client-side include
+>   too.
+>
+> ### `gas-deploy` package change: opt-in `postFn`, cut as v1.2.0
+> `bin/call-webapp.js`'s `run()` now passes `config.postFn` through to `lib/webapp.js`'s `call()`
+> when set (that function already accepted a `postFn` option; only the CLI wrapper didn't expose
+> it). Purely additive — every existing consumer's `config` has no `postFn` key, so `call()`'s
+> `postFn = post` default is untouched for them. Package version bumped to 1.2.0 to match; tag
+> `gas-deploy-v1.2.0` was **force-moved once** while re-pinning PracticeMix (same "safe only
+> because nothing else consumed it yet" caveat Stage 2's notes give for `v1.0.0` — do not repeat
+> this once another project pins `v1.2.x`). F3Go30/RankChoiceVoting/GActionSheet were **not**
+> re-pinned this session — `postFn` is additive and none of the three need it, so there is nothing
+> for them to gain from moving; do not treat their absence from this re-pin as an oversight.
+> All 74 of the package's own tests still pass unchanged.
+>
+> ### What Stage 5a needs before it can close
+> 1. User runs `pnpm run auth` interactively (browser + MFA) to refresh `.auth/user.json`.
+> 2. Re-run `pnpm run deploy:test` for real — this both verifies the route for the first time and
+>    clears the two blocked "assertDeployedVersion passes" / "forced mismatch" ACs (the mismatch
+>    AC can reuse Stage 3's scratch-driver trick: a script that `require`s this file's exported
+>    `config`, overrides one field, and calls the package's real `deploy()` — no test seam needed
+>    in production code, exactly as Stage 3 found).
+>    3. Run `pnpm run verify:test` again — should now show real drift rows instead of the 401.
+> 4. Capture a Playwright baseline (`pnpm test`) before and after nothing further changes, per §4 —
+>    not done this session because it was not the blocker and burns significant time; there is no
+>    reason to expect it depends on the auth session the same way `verify:test`/`deploy:test` do
+>    (most specs likely use their own fixture-driven auth setup — confirm rather than assume).
+> 5. Only then check the three remaining boxes and close Stage 5a. **Do not start Stage 5b until
+>    this stage's boxes are genuinely checked** — Stage 5b's own prerequisite is Stage 4, but the
+>    session-scoping conventions this stage discovered (§3.2's ANYONE-vs-ANYONE_ANONYMOUS split,
+>    the `postFn` mechanism) are exactly the kind of thing 5b should read first if NUUC-Dispatch
+>    turns out to share PracticeMix's auth model rather than F3Go30's.
 
 #### 5b — NUUC-Dispatch
 
