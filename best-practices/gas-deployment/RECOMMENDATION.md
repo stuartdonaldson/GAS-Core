@@ -324,16 +324,14 @@ Per project:
       and compare per §4; no new failures.
 - [x] `release:patch` verified in **one** of the two: version bumps, tag created, deploy invoked
       with `--skip-bump`, tag pushed. Not against PROD.
-- [ ] **STILL BLOCKED, half-cleared (2026-08-22).** Stage 1c has since landed
-      `assertDeployedVersion_` and verified it live against SIT — **for F3Go30**: two real
-      `pnpm run deploy:sit` runs both passed verification (v2.5.0.12 `@272`, v2.5.0.13 `@273` —
-      see Stage 1c's own Handoff Notes for full detail). **RCV still has no `cmd=version` route**
-      — adding one is explicitly Stage 2 work (RCV gained a `cmd=version` route matching §3.2's
-      contract" is a Stage 2 AC, not 1c's), so RCV's half of "Both deploy to SIT … with
-      `assertDeployedVersion_` passing" cannot be satisfied yet. This AC's literal text says
-      "Both" — leaving it unchecked rather than declaring it done on F3Go30 alone. Whoever starts
-      Stage 2 should check this box once RCV's route lands and its own SIT deploy is re-verified
-      with the assertion in place — no other 1b work needs revisiting at that point.
+- [x] **Both projects deploy to SIT under pnpm with `assertDeployedVersion_` passing.**
+      *Cleared 2026-08-22.* F3Go30: two real `pnpm run deploy:sit` runs passed verification
+      (v2.5.0.12 `@272`, v2.5.0.13 `@273` — Stage 1c's Handoff Notes). RCV: cleared by a scoped
+      mini-stage run before Stage 2 (`rcballot-ahn`) that ported Stage 1c's `cmd=version` route
+      and `assertDeployedVersion_` into RCV — `pnpm run deploy:sit` v0.1.6.1→v0.1.6.2,
+      deployment `AKfycbwRGVyw…` `@34→@35`, printed
+      `✅ SIT verified — serving v0.1.6.2 (target SIT)`. Neither project's PROD was deployed.
+      See **Handoff Notes — Stage 1b addendum** below.
 - [x] Both projects' `CLAUDE.md` / `docs/OPERATIONS.md` updated wherever they say `npm run …`
       (F3Go30's `CLAUDE.md` §Deploying names `npm run deploy:sit`, `deploy:prod`,
       `release:patch` explicitly).
@@ -427,6 +425,91 @@ Per project:
 > matching §3.2's contract" — that's Stage 2, not 1c, so 1b's blocked AC may end up only fully
 > closeable for F3Go30 until Stage 2 lands the same route on RCV; flag this ordering wrinkle to
 > whoever scopes 1c/2 next rather than assuming both projects clear together).
+
+
+**Handoff Notes — Stage 1b addendum (2026-08-22): the blocked AC is now cleared**
+> **Stage 1b is fully closed. All 12 ACs checked.** The notes above describe the AC as blocked;
+> that is now historical — read this addendum as the current state.
+>
+> **What was blocking it.** The AC needed *both* consumers to deploy to SIT with
+> `assertDeployedVersion_` passing. F3Go30 cleared in Stage 1c. RCV could not, because it had no
+> `cmd=version` route — and adding one was written as a **Stage 2** AC, while Stage 2 could not
+> start until Stage 1b closed. A genuine circular dependency, not unfinished work.
+>
+> **How it was broken.** A scoped mini-stage (bd `rcballot-ahn`, RCV repo) run *before* Stage 2,
+> doing only the RCV half of the §3.2 contract — deliberately not the rest of Stage 2. Landed in
+> RCV:
+> - `script/WebApp.js`: `handleVersionRequest_()` + `extractDeploymentIdFromUrl_()`, routed in
+>   **both** `doGet` and `doPost` **ahead of the `cmd=admin` branch** (§3.2 requires it to answer
+>   before `ADMIN_SHARED_SECRET` is bootstrapped). Unlike F3Go30 — which has
+>   `resolveWebAppBaseUrl_()` in `Utilities.js` — RCV derives `deploymentId` straight from
+>   `ScriptApp.getService().getUrl()`; RCV has no equivalent helper and did not need one.
+>   `WebApp.js` previously had **no `module.exports` at all**; a Node-only export block was added
+>   so the router is testable.
+> - `tools/manage-deployments.js`: `assertDeployedVersion_(deploymentId, expectedVersion,
+>   expectedTarget, {postFn, intervalSec, timeoutSec, sleep, log})` — **byte-for-byte the same
+>   shape as F3Go30's**, calling `tools/callWebapp.js`'s exported `post()` (no second HTTP
+>   client, §3.3). `deploy()` is now `async`; the assertion is the literal last step before
+>   `printDeploySummary_`, and the summary is fed `verified.version`. On failure: `console.error`
+>   with expected-vs-actual, summary still printed, `process.exitCode = 1`, `return` — no
+>   `process.exit()` mid-async. `main()`/`interactiveMenu()` now `await deploy()`.
+>
+> **Deliberately NOT ported to RCV, so Stage 2 is not surprised:**
+> - **`queryLiveVersion_` and `--summary`.** RCV has no `--summary` mode at all (Stage 1a was
+>   F3Go30-only), so `queryLiveVersion_` would have been exported dead code. Stage 2 supplies
+>   both from the package; do not treat their absence in RCV as an oversight.
+> - **`--cmd` on RCV's `callWebapp.js`.** RCV's CLI hardcodes `?cmd=admin` and has no `--cmd`
+>   switch, so Stage 1c's `node tools/callWebapp.js version --cmd version --env sit` has **no RCV
+>   equivalent**. `assertDeployedVersion_` builds the `?cmd=version` URL itself and calls the
+>   exported `post()` directly — same as F3Go30 does internally. Adding `--cmd` is Stage 2's
+>   `bin/call-webapp.js` work (§3.3), not a gap here.
+> - **RCV's half of #10** (`STATIC_ENTRY_BASE_URL` / the `ApiBridge.js` GAS-side twin) — untouched,
+>   still open, still Stage 2's.
+>
+> **Verified live against SIT, 2026-08-22** (`pnpm run deploy:sit`, exit 0):
+> v0.1.6.1→**v0.1.6.2**, deployment
+> `AKfycbwRGVywtwcP9zAS2HvOJDlgBOa7t_H6l98yKBhR4fWzacDRvAg62fd5HFdhQ97C2Ef7uA`, revision
+> `@34`→`@35`, `✅ SIT verified — serving v0.1.6.2 (target SIT)` immediately before the summary,
+> whose version row carried the server-confirmed value. **PROD and NUUC were never touched.**
+>
+> Three further checks run **live against the real SIT deployment** (same method Stage 1c used —
+> calling the exported function directly rather than inducing a failed deploy):
+> ```
+> LIVE cmd=version (no secret): {"ok":true,"version":"0.1.6.2",
+>   "versionDate":"2026-08-22T01:19:41.747Z","target":"SIT","deploymentId":"AKfycbwRGVyw…"}
+> VERSION-MISMATCH -> …timed out after 2 attempts (4s): expected version=9.9.9.9 target=SIT,
+>   last seen version=0.1.6.2 target=SIT
+> TARGET-MISMATCH  -> …timed out after 2 attempts (4s): expected version=0.1.6.2 target=PROD,
+>   last seen version=0.1.6.2 target=SIT
+> ```
+> The target check fires on a *correct* version with the wrong target — independently of the
+> version check. That matters more in RCV than in F3Go30: **SIT, PROD and NUUC share one version
+> counter**, so a version match alone can't distinguish environments.
+>
+> **Tests** (both ported from F3Go30's Stage 1c files, both added to `package.json`'s `test`
+> chain — now 9 suites, `pnpm test` green): `test/test_webapp_version_route.js` (route on GET and
+> POST, no-secret, `extractDeploymentIdFromUrl_`; stubs `ContentService`/`ScriptApp`/`GasLogger`
+> plus the `ApiBridge.js`/`webBallot.js` cross-file globals the router's other branches reach
+> for) and `test/test_assert_deployed_version.js` (match / edge-propagation-delay /
+> version-mismatch / target-mismatch / unreachable-response, all injected fakes, no network, no
+> wall-clock wait). The edge-propagation path is proven by the injected fake, not by observing a
+> live retry — the real deploy's first poll already saw the new version, same as F3Go30's runs.
+>
+> **Known, accepted duplication.** RCV's `assertDeployedVersion_` and both test files are
+> near-verbatim copies of F3Go30's. This was deliberate: inventing a second design here would
+> give Stage 2 two shapes to reconcile instead of one. **Stage 2 extracts a single copy into
+> `lib/verify.js` and deletes both.** The two are identical today — diff them before extracting
+> and expect no meaningful delta.
+>
+> **Docs updated in the same commit** (per the stage rules): RCV's `CLAUDE.md` gained real
+> **Build & Test** and **Deploying** sections replacing the scaffold placeholders — pnpm-only,
+> the three deploy scripts, the `cmd=version` contract, why it must stay ahead of the
+> `cmd=admin` gate, and a copy-pasteable one-liner to query it (that exact one-liner was run and
+> confirmed working). RCV's `README.md` gained a `?cmd=version` row in the web-app URL table and
+> `cmd=api`/`cmd=version` in the `script/WebApp.js` file description.
+>
+> **Nothing in Stage 1b was re-run or revisited** beyond this — the pnpm migration itself was
+> already verified and is untouched.
 
 ---
 
