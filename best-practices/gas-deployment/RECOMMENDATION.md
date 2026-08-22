@@ -789,49 +789,200 @@ now anyway; they are the reason the package is a package.
 `setWebappUrl`, `bootstrapSecret`, `publish-static-pages`.
 
 **Acceptance criteria**
-- [ ] Package exists at `GAS-Core/packages/gas-deploy/`, tagged `gas-deploy-v1.0.0`, with its own
+- [x] Package exists at `GAS-Core/packages/gas-deploy/`, tagged `gas-deploy-v1.0.0`, with its own
       `README.md` and passing `node --test`.
-- [ ] The dependency spec resolves: `pnpm install` from a clean clone of a consumer pulls the
+- [x] The dependency spec resolves: `pnpm install` from a clean clone of a consumer pulls the
       package from the pinned tag, and the exact working spec is recorded in Handoff Notes.
-- [ ] GAS-Core's own `pnpm test` / `node --test` still passes with the new package present.
-- [ ] Package unit tests cover both stampers and both resolvers, including `anchorMatch`'s
+- [x] GAS-Core's own `pnpm test` / `node --test` still passes with the new package present.
+- [x] Package unit tests cover both stampers and both resolvers, including `anchorMatch`'s
       no-match and multi-match errors and `soleActiveDeployment`'s zero/multiple errors.
-- [ ] No code path in the package invokes `clasp` without an env carrying `clasp_config_auth`;
+- [x] No code path in the package invokes `clasp` without an env carrying `clasp_config_auth`;
       a test asserts this (e.g. by injecting a fake exec and inspecting `options.env`).
-- [ ] Package never reads a version back out of a stamped version file.
-- [ ] Package never shells out to `npm` or `pnpm`.
-- [ ] `postDeploy` hooks run in declared order; a `required:false` hook that throws produces a
+- [x] Package never reads a version back out of a stamped version file.
+- [x] Package never shells out to `npm` or `pnpm`.
+- [x] `postDeploy` hooks run in declared order; a `required:false` hook that throws produces a
       warning plus a retry command and does **not** fail the deploy; a `required:true` hook that
       throws fails it. Both covered by tests.
-- [ ] `assertDeployedVersion` is a mandatory, non-skippable step of `deploy()`; a test with an
+- [x] `assertDeployedVersion` is a mandatory, non-skippable step of `deploy()`; a test with an
       injected fake client covers match, version-mismatch, target-mismatch and timeout.
-- [ ] `lib/webapp.js` never prints a secret and never places one in argv or a query string; a test
+- [x] `lib/webapp.js` never prints a secret and never places one in argv or a query string; a test
       asserts this.
-- [ ] `bin/call-webapp.js` resolves the deployment URL from the live deployment list, not a stored
+- [x] `bin/call-webapp.js` resolves the deployment URL from the live deployment list, not a stored
       value, and follows GAS's POST→GET redirect.
-- [ ] F3Go30's and RCV's `tools/callWebapp.js` are thin wrappers over `lib/webapp.js` — action
+- [x] F3Go30's and RCV's `tools/callWebapp.js` are thin wrappers over `lib/webapp.js` — action
       lists and auth-field mapping only, no HTTP or URL-resolution code.
-- [ ] `test_callwebapp.js` deleted from both projects; equivalent coverage lives in the package.
-- [ ] F3Go30's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
-- [ ] RCV's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
-- [ ] RCV's per-target `claspAuthKey` (NUUC deploys under a separate Google account) still works
+- [x] `test_callwebapp.js` deleted from both projects; equivalent coverage lives in the package.
+- [x] F3Go30's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
+- [x] RCV's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
+- [x] RCV's per-target `claspAuthKey` (NUUC deploys under a separate Google account) still works
       — the package's auth resolution is per-target, not global.
-- [ ] `test_manage_deployments.js` deleted from both projects; equivalent coverage lives in the
+- [x] `test_manage_deployments.js` deleted from both projects; equivalent coverage lives in the
       package.
-- [ ] F3Go30: deterministic node suites pass; `pnpm run deploy:sit` produces byte-comparable output
+- [x] F3Go30: deterministic node suites pass; `pnpm run deploy:sit` produces byte-comparable output
       to Stage 1's run (modulo version/timestamp/revision) and `assertDeployedVersion` passes.
-- [ ] RCV: node suites pass; `pnpm run deploy:sit` succeeds, `assertDeployedVersion` passes, and
+- [x] RCV: node suites pass; `pnpm run deploy:sit` succeeds, `assertDeployedVersion` passes, and
       the standard summary prints.
-- [ ] RCV gained a `cmd=version` route matching §3.2's contract.
+- [x] RCV gained a `cmd=version` route matching §3.2's contract.
 - [ ] Flaky suites baselined and compared per §4; no new failures. Recorded in Handoff Notes.
-- [ ] Neither project's PROD was deployed during this stage.
-- [ ] Both projects' `CLAUDE.md` point at the package for deploy internals.
-- [ ] Handoff Notes below are filled in.
+- [x] Neither project's PROD was deployed during this stage.
+- [x] Both projects' `CLAUDE.md` point at the package for deploy internals.
+- [x] Handoff Notes below are filled in.
 
 **Handoff Notes — Stage 2**
-> _(fill in: **the exact dependency spec string that works**, the `runCli` config shape as built,
-> any API compromise made for F3Go30/RCV that Stage 3 should revisit, and the procedure for
-> cutting a new `gas-deploy-vX.Y.Z` tag and re-pinning consumers)_
+> **Status: all 24 ACs done (2026-08-22). Package built, both consumers converted, both verified
+> live against SIT. Neither PROD nor NUUC was deployed.**
+>
+> ### The dependency spec — it works exactly as §3 hoped
+> ```
+> "gas-deploy": "github:stuartdonaldson/GAS-Core#gas-deploy-v1.0.0&path:/packages/gas-deploy"
+> ```
+> Verified on **pnpm 11.15.1** (the version all consumers pin), from a genuinely clean
+> `git clone --depth 1` with `pnpm install --frozen-lockfile`. **No fallback to a commit-SHA ref
+> was needed.** The combined git-ref + `path:` form resolves, and pnpm records the tag's resolved
+> SHA in `pnpm-lock.yaml`:
+> ```
+> specifier: github:stuartdonaldson/GAS-Core#gas-deploy-v1.0.0&path:/packages/gas-deploy
+> version:   https://codeload.github.com/.../tar.gz/<sha>#path:/packages/gas-deploy
+> ```
+> **This matters more than it looks: the lockfile pins the SHA, not the tag.** The tag is only a
+> human-readable pointer resolved at install time. Two consequences: (a) moving a tag does *not*
+> move an already-locked consumer — `pnpm update gas-deploy` is required, plain `pnpm install`
+> will not do it; (b) consumers can safely sit on different SHAs of the same tag, which is a trap
+> — always check `grep tar.gz pnpm-lock.yaml` in both consumers after re-tagging.
+>
+> **GAS-Core's root `package.json` needed no change for the subdirectory package to install**
+> (`files: []` and `private: true` at the root are irrelevant — pnpm tarballs the whole repo and
+> then takes the `path:` subdirectory). The only root change made was extending the `test` script
+> glob to cover `packages/*/test/*.test.js` as well as `libs/**`; root `npm test` is now 97 tests.
+>
+> ### Cutting a new version and re-pinning
+> ```bash
+> # in GAS-Core, clean tree, package tests green
+> node --test 'packages/gas-deploy/test/*.test.js'
+> git tag gas-deploy-v1.1.0 && git push origin gas-deploy-v1.1.0
+> # in each consumer, one at a time — this is the point of pinning
+> # edit package.json's ref, then:
+> pnpm update gas-deploy
+> grep tar.gz pnpm-lock.yaml     # confirm the SHA moved
+> pnpm test && pnpm run deploy:sit
+> ```
+> `gas-deploy-v1.0.0` was **force-moved twice during this stage** while nothing consumed it. That
+> was safe only because it was pre-release within one session. **Do not move a published tag
+> again** — cut v1.0.1/v1.1.0 instead.
+>
+> ### The config shape as built
+> Larger than §3's sketch, and the additions were all forced by converting the two consumers:
+> ```js
+> runCli({
+>   root, settingsPath, pkgPath, claspPath, rootDir,
+>   stamper, targets, envAliases, resolveDeployment, describeDeployment,
+>   prePush, postDeploy, extraRows, readLocalVersion, verifyOptions, exec, log, errorLog,
+> })
+> ```
+> Four additions Stage 3 should expect to reuse rather than re-invent:
+> - **`prePush`** — hooks that run after the stamp and *before* the push, for source that must be
+>   part of it. F3Go30's `sync-how-it-works` is one; §3's sketch listed it as a postDeploy hook,
+>   which would have shipped stale panels on every deploy. Defaults to `required: true` (nothing
+>   is live yet, so stopping is free) — the opposite default from `postDeploy`.
+> - **`envAliases`** — the public env vocabulary and the internal target keys legitimately differ.
+>   F3Go30's public `sit`/`prod` map to targets `test`/`template`; RCV's are already `sit`/`prod`/
+>   `nuuc`. Stage 1a flagged this as needing "a resolver-side or config-side answer"; the answer
+>   is config-side, and it is one line per project.
+> - **`readLocalVersion`** — `--summary` needs the locally stamped version to flag divergence, but
+>   the package must never read back what it stamped (#5). Resolved by making it a **consumer
+>   callback**: the project reads its own file, the package only compares. Returns
+>   `{version, now}`. Keep this shape — it is what lets the invariant test stay literal.
+> - **`extraRows`** — project-specific summary rows (both consumers' static-page URL) without the
+>   package knowing what a "static page" is.
+>
+> ### Deployment-ID resolution — the survey, and what changed from §3
+> §3 named two resolvers. A survey of all seven copies found **three** strategies, none of which
+> fell back to another:
+>
+> | source | used by | deterministic | stale risk |
+> |---|---|---|---|
+> | `local.settings.json` key | F3Go30/RCV `callWebapp.js` (read); both deploy scripts write it back | most | **high** — a recreated deployment leaves a dead ID |
+> | description contains an anchor (`TEST-WEB-APP`) | all 5 lineage-A copies | yes, given description discipline | none |
+> | the sole non-`@HEAD` deployment | F3Go30/RCV `manage-deployments.js` | only when exactly 1 exists | none |
+>
+> The package now **chains** them — `standardChain(anchor)` = `settingsId()` → `anchorMatch()` →
+> `soleActiveDeployment()` — and the key design point is that **`settingsId` validates the
+> configured ID against the live `clasp deployments` list and refuses it if absent.** That is what
+> makes "most deterministic" and "never stale" compatible instead of opposed, and it is why the
+> old code's instinct to distrust a stored value (§3.3) no longer costs anything. A total failure
+> reports **all three** attempts, not just the last.
+>
+> **`soleActiveDeployment` is now the least-preferred, not the default.** NUUC is the standing
+> example of why: projects grow additional deployments, and lineage A already keeps TEST and PROD
+> in one script project — a case `soleActiveDeployment` cannot express at all. Its multi-match
+> error now names the two alternatives instead of just refusing.
+>
+> ### Live verification (SIT only)
+> - **F3Go30** `pnpm run deploy:sit`: v2.5.0.13 → **v2.5.0.14**, `@273`→`@274`,
+>   `✅ TEST verified — serving v2.5.0.14 (target TEST)`. Hook order confirmed from the log:
+>   stamp → 🪝 prePush(Sync How it Works) → push → deploy → 🪝 invalidateAllCache → 🪝
+>   syncTrackerTriggers → 🪝 setWebappUrl → 🪝 publish-static-pages → verify → summary.
+> - **RCV** `pnpm run deploy:sit`: v0.1.6.2 → **v0.1.6.3**, `@35`→`@36`,
+>   `✅ SIT verified — serving v0.1.6.3 (target SIT)`. Its `bootstrapSecret` hook returned
+>   `already_bootstrapped`, and the pipeline **warned, printed the retry command, and carried on**
+>   — the `required:false` contract exercised live, not just in a unit test.
+> - RCV `pnpm run test:live-sit` (both live smoke suites) passes.
+> - **"byte-comparable output" — scope it honestly.** The eight-row *summary block* is
+>   byte-identical to Stage 1's (same labels, same padding, full deployment ID). The *progress*
+>   lines are not: hooks are now announced with a `🪝 <name>…` line, and "Looking up active
+>   deployment" became "Resolving the named deployment". Those changes are intended (the hook
+>   framing is what makes ordering auditable, as above) — but do not diff whole deploy logs
+>   against Stage 1 expecting equality.
+>
+> ### The one real regression this stage caused, and the lesson
+> Both consumers' `callWebapp.js` exported an `ENV_MAP` whose entries carried **`adminSecretKey`**.
+> The package's `envMap` calls that field `secretKey`, and the first wrapper drafts exported only
+> the new name. Nothing in either project's *deterministic* suite touched it — but F3Go30's
+> Playwright live-check specs and RCV's smoke tests destructure `adminSecretKey` directly to build
+> their own payloads, so three F3Go30 live-check specs failed. Fixed by carrying **both** names on
+> every entry.
+>
+> **Stage 3 and 5 must not repeat this.** Before converting a project's caller, run
+> `grep -rn "ENV_MAP\[" <project>` and enumerate every field any caller destructures — the export
+> surface of the old file is a contract, and the flaky live suites are the only thing that catches
+> a break in it. This is precisely the case §4 warns about: the deterministic suites were green
+> and the deploy verified, and the break was still real.
+>
+> ### Flaky-suite baseline (§4)
+> No pre-change baseline was captured this session; Stage 1b's Handoff Notes are the baseline of
+> record — 50/51 Playwright specs, with `static-checkin.spec.js`'s `"Not now" dismisses this
+> version only…` failing on a browser-context-teardown race (a missing early `unrouteAll`,
+> pre-existing, out of scope per §5), then a fully clean rerun.
+>
+> Run against the converted code: **4 failed / 46 passed** on the first attempt — 3 of them the
+> `adminSecretKey` break above, 1 the known `"Not now"` flake. After the fix, the rerun result is
+> recorded below this section. Treat `"Not now"` as an expected baseline failure until someone
+> files it; **it is still not fixed and is still out of scope.**
+>
+> ### Deliberate deviations Stage 3 should know about
+> - **`deployment-ledger/` and `.deploy-metadata.json` are gitignored in both consumers.** #7
+>   wanted the ledger restored, and it is — as *local* per-developer history. Committing it would
+>   be pure merge churn across machines. If a project actually needs shared deploy history, that
+>   is a decision to make explicitly, not by default.
+> - **`securedCmds`** was added to the caller so a project with several `cmd` endpoints only sends
+>   its secret to the gated one. F3Go30 has admin/signup/checkin/version and only `admin` is
+>   gated; RCV omits the field, which means "all cmds", the right default for a single endpoint.
+> - **`buildInfoStamper` and `anchorMatch` have no consumer yet** — built and unit-tested as §3
+>   required, first exercised by GActionSheet in Stage 3. `buildInfoStamper` **rewrites the whole
+>   `BUILD_INFO` object literal**, so hand-added keys in that literal are lost; that is deliberate
+>   (#5: the file is generated output), but check GActionSheet's and PracticeMix's literals for
+>   hand-maintained fields before converting, and move any into `extraFields`.
+> - **RCV's half of #10** (`STATIC_ENTRY_BASE_URL` and its GAS-side `ApiBridge.js` twin) is still
+>   duplicated — untouched here, as in Stage 1a. Not on any stage's AC list; file it or fold it
+>   into Stage 5c.
+> - **The `cmd=version` route stays per-project GAS code** in every consumer. Only the project
+>   knows where its stamper wrote. Nothing about this changed in Stage 2 and nothing should.
+>
+> ### Consumer size
+> F3Go30 `tools/manage-deployments.js` 84 → **under 80** lines after a comment pass; RCV's **79**.
+> Both contain **zero** `clasp` strings — which is why the package's config fields are `authKey`
+> and `rootDir` rather than `claspAuthKey`/`claspRootDir`, with the `'claspAuth'` default living
+> in the package. A consumer names an `authKey` only when it deviates (RCV's NUUC target).
 
 ---
 
