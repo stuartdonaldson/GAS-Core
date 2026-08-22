@@ -30,6 +30,8 @@ Measured drift, 2026-08-21:
 | 10 | Static front-end URL duplicated. F3Go30 declares `STATIC_PAGES_BASE_URL_` in `script/version.js` but `tools/wait-for-static-deploy.js`, `tools/perfTiming.js`, `tools/publish-static-pages.js` and a test each re-hardcode the literal. RCV keeps a node-side `STATIC_ENTRY_BASE_URL` and a hand-maintained GAS-side twin in `script/ApiBridge.js`. | F3Go30, RCV |
 | 11 | GActionSheet enforces `only-allow pnpm` but its own `release:*` scripts call `npm version`. | GActionSheet |
 | 12 | F3Go30's and RCV's `test_manage_deployments.js` are near-identical copies; the other three projects have no deploy tests. | all |
+| 13 | **No project can be asked what version it is actually running.** PracticeMix's `status` returns a cache generation; NUUC-Dispatch embeds `BUILD_INFO.version` in a `doGet` text body; F3Go30, RCV and GActionSheet expose nothing. A deploy is therefore never verified — the script reports success on the strength of `clasp deploy` exiting 0. | all |
+| 14 | **Five implementations of the webapp caller**: `tools/callWebapp.js` (F3Go30, RCV), `tools/call-webapp.js` (NUUC-Dispatch, PracticeMix), `scripts/call_webapp.py` (GActionSheet). All solve the same four problems — deployment-URL resolution, secret injection without shell-history leakage, POST-vs-GET redirect handling, env selection — and their docstrings already cross-reference each other as "mirrors X's". Same drift shape as `manage-deployments.js`, one stage behind. | all |
 
 ## 2. Two lineages (both legitimate)
 
@@ -59,7 +61,9 @@ GAS-Core/packages/gas-deploy/
   lib/resolvers.js              # soleActiveDeployment, anchorMatch(anchor)
   lib/ledger.js                 # writeLedgerEntry, writeDeployMetadata
   lib/summary.js                # printDeploySummary
-  lib/verify.js                 # pingWebapp
+  lib/verify.js                 # pingWebapp, assertDeployedVersion
+  lib/webapp.js                 # resolveUrl, post, secret injection, redirect handling
+  bin/call-webapp.js            # the standardized CLI
   test/                         # the unit tests, once
 ```
 
@@ -118,6 +122,73 @@ Rules:
 - Reachable standalone as `--summary --env <env>` so "what is deployed right now?" does not
   require deploying.
 
+### 3.2 Deploy verification — assert the version actually serving (#13)
+
+**This is the single most valuable thing the package adds, and it does not exist anywhere today.**
+
+Every variant reports success when `clasp deploy` exits 0. That proves a version was *created*,
+not that the /exec URL is serving it. The gap covers real failure modes seen in these projects: a
+deployment silently converted to a library because `appsscript.json` lost its `webapp` section, an
+edge that has not propagated yet, a push that landed in the wrong script project because clasp fell
+back to the wrong credentials (#1), and a named deployment left pointing at an older version.
+
+**Contract.** Every project's webapp exposes one uniform route returning the stamped build
+identity — no secret required, so it works on an `ANYONE_ANONYMOUS` deployment and can be called
+before any secret is bootstrapped:
+
+```jsonc
+// GET/POST ?cmd=version  →
+{ "ok": true, "version": "2.5.0.9", "versionDate": "2026-08-21T19:08:10.331Z",
+  "target": "TEST", "deploymentId": "AKfycbx…" }
+```
+
+The values come from whatever the project's stamper wrote (`APP_VERSION`/`APP_VERSION_DATE`/
+`APP_DEPLOY_TARGET`, or `BUILD_INFO`), so a project adopts this by adding a route, not by changing
+its version model.
+
+**`assertDeployedVersion()`** runs as the last step before the summary, and is what makes a deploy
+succeed or fail:
+
+- Polls the /exec URL until the reported `version` equals the version just stamped, or the timeout
+  expires. Reuses `execWithRetry`'s rationale — the ~5s edge-propagation race (#9) is exactly why
+  this polls rather than checking once.
+- Also asserts `target` matches the target just deployed to. **This is the thing that catches
+  deploying to the wrong environment**, which no current script can detect.
+- On mismatch, fails the deploy loudly with expected vs. actual, and prints the standard summary
+  anyway so the operator can see what *is* deployed.
+- The verified version and deployment ID feed the summary (§3.1), so the summary reports what the
+  server confirmed, not what the local script hoped.
+
+This also replaces flaky end-to-end suites as the deploy gate — see §4's conventions.
+
+### 3.3 The webapp caller (#14)
+
+`assertDeployedVersion` needs an HTTP client that resolves the deployment URL, handles GAS's
+POST→GET redirect, and injects secrets without leaking them. That is precisely what the five
+existing callers already do. Building a sixth inside the package would be the same mistake in a
+new location.
+
+The package owns **one** implementation (`lib/webapp.js`) plus a CLI (`bin/call-webapp.js`), and
+each project's caller becomes a thin wrapper supplying its own action list, auth field names, and
+env→URL mapping. Project-specific action semantics stay in the project; URL/auth/transport
+boilerplate does not.
+
+Shared behaviour to absorb, taking the best version of each from the existing five:
+- URL resolution **derived from the live deployment list**, never a stored value that can go stale
+  (PracticeMix's `call-webapp.js` is the model here).
+- Secret never printed, not even on failure; never placed in argv or the query string (GActionSheet
+  and PracticeMix both document this as the reason the tool exists).
+- POST→GET redirect following.
+- `--env` selection with `sit`/`test` treated as synonyms (NUUC-Dispatch already does this).
+- Pluggable auth field: `adminSecret` / `testToken` / `secret` / none, per action.
+- `--cmd` routing for projects with multiple endpoints (F3Go30, NUUC-Dispatch).
+- `--ns` namespace shorthand (F3Go30 only — keep as an optional pass-through, not core).
+
+**Open question, decided in Stage 3:** GActionSheet's caller is Python and is imported by pytest.
+Either it shells out to the Node CLI, or it stays a Python port held to the Node implementation by
+a shared contract test. Recommendation: keep the Python client, because making pytest shell out per
+call is slow and awkward — but pin it with a contract test so the two cannot drift silently.
+
 ---
 
 ## 4. Stages
@@ -134,9 +205,30 @@ Conventions for whoever executes a stage:
 - Each project's own `CLAUDE.md` deployment section is part of the deliverable — if behaviour
   changes, the doc changes in the same commit.
 
+**How deploys are verified in these ACs — read this before running any test suite.**
+
+Several of these projects have flaky end-to-end suites (Playwright against live GAS, pytest
+journeys). "the regression suite passes" is therefore a bad gate for deployment work: it fails for
+reasons unrelated to the change, and a green run does not prove the deploy landed. Every AC below
+uses this three-tier rule instead:
+
+1. **The deploy gate is `assertDeployedVersion` (§3.2)** — the deployed webapp reports the version
+   and target just stamped. This is deterministic, fast, and tests the thing the stage actually
+   changes. Where an AC says "deploys to SIT successfully", it means this assertion passed.
+2. **Deterministic unit tests must pass outright** — `node --test` / `node test/*.js` suites, the
+   package's own tests, and anything not touching the network. No flakiness is tolerated here.
+3. **Flaky end-to-end suites are compared to a baseline, not required to be green.** Capture a run
+   *before* touching anything, save it under the scratchpad, and after the change require **no new
+   failures relative to that baseline**. Record both results in Handoff Notes. If a suite is too
+   unreliable to baseline usefully, say so in Handoff Notes and rely on tier 1 — do not burn the
+   session re-running it.
+
+Never edit or skip a flaky test to make an AC pass. If a pre-existing failure blocks verification,
+record it and move on; fixing it is not in this scope (§5).
+
 ---
 
-### Stage 1 — Harden the summary in F3Go30, and pnpm the two Stage 2 consumers
+### Stage 1 — Prototype the package's contracts in F3Go30, and pnpm the two Stage 2 consumers
 
 **Model: Sonnet.** Mechanical, single repo, existing tests, no cross-project design decisions.
 
@@ -147,8 +239,14 @@ surface, before anything is extracted — this is the spec the package will be b
 (b) put F3Go30 and RankChoiceVoting on pnpm, since the package is consumed as a pnpm-only git
 subdirectory dependency (§3) and those two are Stage 2's consumers.
 
-1a and 1b are independent — do them in either order, or in parallel. Both must be green before
-Stage 2 starts.
+(c) prototype the deploy-verification contract (§3.2) that replaces flaky end-to-end suites as
+the deploy gate.
+
+1a, 1b and 1c are independent — any order, or in parallel. All three must be green before Stage 2
+starts.
+
+> **1a closed 2026-08-21.** §3.2/§3.3 were added to this plan afterwards; that work is **Stage 1c**
+> and does not reopen 1a. Do not uncheck 1a's ACs.
 
 ---
 
@@ -215,20 +313,159 @@ Per project:
    `demo:screenshots`, `regression:sit`).
 
 **Acceptance criteria — Stage 1b**
-- [ ] Both projects declare `packageManager: pnpm@11.15.1` and `only-allow pnpm`.
-- [ ] No `package-lock.json` in either; `pnpm-lock.yaml` committed in both.
-- [ ] `grep -n '"npm ' package.json` and `grep -n 'npx ' package.json` return nothing in either.
-- [ ] Fresh `pnpm install` from a clean clone succeeds in both.
-- [ ] F3Go30: `pnpm test` passes (all 40+ node suites).
-- [ ] RCV: `pnpm test` passes (all 7 suites).
-- [ ] F3Go30: `pnpm run regression:sit` passes, confirming the Playwright specs still resolve
-      under `pnpm exec`.
-- [ ] `release:patch` verified in **one** of the two: version bumps, tag created, deploy invoked
+- [x] Both projects declare `packageManager: pnpm@11.15.1` and `only-allow pnpm`.
+- [x] No `package-lock.json` in either; `pnpm-lock.yaml` committed in both.
+- [x] `grep -n '"npm ' package.json` and `grep -n 'npx ' package.json` return nothing in either.
+- [x] Fresh `pnpm install` from a clean clone succeeds in both.
+- [x] F3Go30: `pnpm test` passes (deterministic node suites — tier 2).
+- [x] RCV: `pnpm test` passes (all 7 node suites — tier 2).
+- [x] F3Go30: `pnpm run regression:sit`'s Playwright specs **resolve and execute** under
+      `pnpm exec` — this AC is about `pnpm exec` resolution, not about the specs passing. Baseline
+      and compare per §4; no new failures.
+- [x] `release:patch` verified in **one** of the two: version bumps, tag created, deploy invoked
       with `--skip-bump`, tag pushed. Not against PROD.
-- [ ] Both deploy to SIT successfully under pnpm.
-- [ ] Both projects' `CLAUDE.md` / `docs/OPERATIONS.md` updated wherever they say `npm run …`
+- [ ] **BLOCKED, not done.** Both deploy to SIT under pnpm (once 1c has landed, with
+      `assertDeployedVersion_` passing). `pnpm run deploy:sit` itself succeeds in both projects
+      today (verified, see Handoff Notes) — but this AC's literal text requires
+      `assertDeployedVersion_`, which does not exist anywhere yet (Stage 1c, not started by
+      anyone as of this session). Cannot be satisfied without doing Stage 1c's work, which is out
+      of this stage's scope. Flagged to the requester rather than silently building 1c or
+      declaring this box done on the weaker deploy-succeeded check.
+- [x] Both projects' `CLAUDE.md` / `docs/OPERATIONS.md` updated wherever they say `npm run …`
       (F3Go30's `CLAUDE.md` §Deploying names `npm run deploy:sit`, `deploy:prod`,
       `release:patch` explicitly).
+- [x] Handoff Notes below are filled in.
+
+**Handoff Notes — Stage 1b**
+> **Status: 11 of 12 ACs done (2026-08-21); one BLOCKED** — the "deploy to SIT with
+> `assertDeployedVersion_`" AC cannot be satisfied because `assertDeployedVersion_` doesn't exist
+> yet (that's Stage 1c, not started by anyone). Everything else in 1b is done and verified. Do not
+> mark 1b fully closed until 1c lands and the deploy is re-verified with the assertion in place —
+> at that point the blocked box just needs checking, no other 1b work should need revisiting.
+>
+> **Both `package.json`s**: added `"packageManager": "pnpm@11.15.1"`, `"preinstall": "only-allow
+> pnpm"`, `"only-allow": "1.2.2"` devDependency (matching GActionSheet/NUUC-Dispatch's pinned
+> version exactly). `pnpm import` generated `pnpm-lock.yaml` from each existing
+> `package-lock.json`, which was then deleted. Verified with a real clean-room test: `rm -rf
+> node_modules && pnpm install` succeeded in both from the committed lockfile alone.
+>
+> **`npm`/`npx` → `pnpm`/`pnpm exec` conversions** (both projects use the identical script shape):
+> `release:patch/minor/major`: `npm version <x> && npm run push -- --skip-bump && git push
+> --follow-tags` → `pnpm version <x> && pnpm run push -- --skip-bump && git push --follow-tags`.
+> F3Go30 additionally: `test:static-signup`, `demo:screenshots`, `regression:sit`,
+> `regression:sit:copy-and-init` — all `npx playwright` → `pnpm exec playwright`.
+>
+> **`pnpm version` vs `npm version` — the semantic difference flagged in the work items turned out
+> not to matter here.** Both commands, run with no extra flags, do the same three things for a
+> patch bump: write the bumped `version` into `package.json`, `git commit` it, and `git tag
+> v<version>`. Confirmed directly (see below) — `pnpm version patch` in a real git checkout
+> produced a commit titled `0.1.7` and a `v0.1.7` tag, exactly npm's shape. The "does not run npm
+> lifecycle scripts" difference in the docs refers to `pre/postversion` npm-lifecycle hooks, which
+> neither project defines — so it's a real difference in general but a non-issue for these two.
+>
+> **`release:patch` verified end-to-end on RCV, in an isolated scratch copy — not the real repo.**
+> Both projects' `push` script targets PROD (F3Go30: `--deploy-template`; RCV: `--deploy-prod`) by
+> design — `release:patch` *is* "ship to PROD" by definition in both scripts, so it cannot be
+> exercised against the real repo without an actual PROD deploy, which is out of scope everywhere
+> in this plan. Verification method used: `rsync`'d a full working copy of RCV (excluding
+> `node_modules`/`.git`) to scratch, `git init`'d it fresh with a local bare repo as `origin`,
+> edited **only the scratch copy's** `push` script to point at `--deploy-sit` instead of
+> `--deploy-prod`, then ran `pnpm run release:patch` for real. Confirmed: version bumped
+> 0.1.6→0.1.7 in `package.json`; commit + `v0.1.7` tag created by `pnpm version patch`; `--skip-bump`
+> reached `manage-deployments.js` correctly (`build` counter stayed at 1, unchanged — bump was
+> skipped as instructed); the deploy step ran a real `clasp push -f` + named-deployment update
+> against RCV's real SIT script project (deployment `AKfycbwRGVyw…` → `@34`); `git push
+> --follow-tags` pushed the commit + tag to the scratch bare remote successfully (confirmed via
+> `git ls-remote --tags`). The static-pages publish sub-step failed in scratch only because it
+> expects a sibling `../F3Static` git checkout that doesn't exist there — a scratch-environment
+> artifact, not a package-manager or release-mechanics problem (the real `pnpm run deploy:sit` run
+> done separately, see below, exercises that step for real and it passed). Scratch dir deleted
+> after verification; real RCV repo untouched by this experiment (only touched by the separate
+> real `deploy:sit` runs below).
+>
+> **Both projects deploy to SIT successfully under pnpm** (plain `pnpm run deploy:sit`, no
+> `assertDeployedVersion_` yet since it doesn't exist): F3Go30 `2.5.0.10→2.5.0.11`, deployment
+> `AKfycbzwlKLu…` `@270→@271`, full standard summary printed last. RCV `0.1.6.0→0.1.7.1` (build
+> counter continued from the scratch-copy test above, which bumped real SIT state — expected, not
+> a bug), deployment `AKfycbwRGVyw…` `@33→@34`, summary printed. Both are genuinely deployed and
+> serving; only the wire-level version *assertion* is what's missing, per the blocked AC above.
+>
+> **`pnpm run regression:sit` (F3Go30): one flaky failure found, confirmed pre-existing and
+> unrelated to pnpm, then got a fully clean rerun.** First full run: 50/51 Playwright specs passed;
+> `static-checkin.spec.js`'s `"Not now" dismisses this version only...` test failed with
+> `browserContext.close: Protocol error` / `route.fetch: Target page... has been closed` — a route
+> still in-flight when the context tore down. The *previous* test in the same file was already
+> patched for exactly this race (see its comment: "Let the reloaded page's own identify settle...
+> otherwise the stubbed route is still in flight when the fixture closes"); the failing test has an
+> `unrouteAll` call but only after its *second* reload, not its first — same class of race, just
+> not yet patched there. Confirmed as timing-only, not a `pnpm exec` resolution problem: reran the
+> single test in isolation and it passed. Reran the full `regression:sit` chain a second time
+> end-to-end (all 51 Playwright specs including `pnpm test`'s node suites, plus
+> `pnpm run test:gaslogger` at the end) and got a completely clean pass, confirming `pnpm exec
+> playwright` resolves and runs every spec correctly — no formal pre-migration baseline was
+> captured (package.json was already pnpm-shaped before the first run), but the flake's cause is
+> independently verified as a browser-context-teardown race in test code, not anything pnpm- or
+> package-manager-related, and the same suite passed clean twice under pnpm. **This flaky test is
+> not fixed** — it's a pre-existing bug in `static-checkin.spec.js` (missing an early `unrouteAll`
+> like its neighbor test has) — out of this stage's scope per §5, but worth a follow-up issue.
+>
+> **Doc sweep**: F3Go30's `CLAUDE.md` §Deploying and `docs/OPERATIONS.md` (8 occurrences) converted
+> `npm run …` → `pnpm run …`; `static-pages/README.md` (2 occurrences) likewise.
+> `docs/deployment-model.md` deliberately left alone — its own header states it is a historical
+> rationale doc superseded by `docs/OPERATIONS.md §Deployment` for current state, matching the
+> "kept for rationale" framing already in this project's CLAUDE.md. RCV has no equivalent
+> operational doc mentioning `npm run …` (only a placeholder scaffold comment in its `CLAUDE.md`
+> Build & Test section, not real instructions) — nothing to update there.
+>
+> **Still open for whoever does Stage 1c**: the blocked AC above is the entire gap. Once
+> `assertDeployedVersion_` and the `cmd=version` route exist in F3Go30 (per 1c's own spec), re-run
+> `pnpm run deploy:sit` in both F3Go30 and RCV and check that box — RCV will need its own
+> `cmd=version` route too (already called out as a Stage 2 AC, "RCV gained a `cmd=version` route
+> matching §3.2's contract" — that's Stage 2, not 1c, so 1b's blocked AC may end up only fully
+> closeable for F3Go30 until Stage 2 lands the same route on RCV; flag this ordering wrinkle to
+> whoever scopes 1c/2 next rather than assuming both projects clear together).
+
+---
+
+#### Stage 1c — Deploy verification over the wire (F3Go30)
+
+**Model: Sonnet.** Scoped to one repo, and 1a's Handoff Notes already describe the surrounding code.
+
+Prototype §3.2 in F3Go30 — the second spec Stage 2 extracts from. Without this, every stage's
+"deployed successfully" AC rests on `clasp deploy` exiting 0 (#13).
+
+1. Add a `cmd=version` route to F3Go30's webapp returning
+   `{ok, version, versionDate, target, deploymentId}` read from `script/version.js`'s stamped
+   constants. No secret required — it must work on `ANYONE_ANONYMOUS` and before any secret is
+   bootstrapped.
+2. Add `assertDeployedVersion_()` to `tools/manage-deployments.js`: poll the /exec URL until the
+   reported `version` **and** `target` match what was just stamped, or time out. Run it as the last
+   step before the summary. Mismatch fails the deploy.
+3. Call it through the existing `tools/callWebapp.js` — do not add a second HTTP client. Stage 2
+   extracts both together (§3.3).
+4. Feed the server-confirmed version into `printDeploySummary_` so the summary reports what the
+   server confirmed, not what was stamped locally. 1a's Handoff Notes give the signature.
+5. Wire it into `--summary` too: a read-only summary should report the live version, and flag
+   divergence from local `version.js` (that divergence means someone deployed from elsewhere, or
+   a deploy half-failed).
+
+**Acceptance criteria — Stage 1c**
+- [ ] `node tools/callWebapp.js version --cmd version --env sit` returns version, versionDate,
+      target and deployment ID.
+- [ ] The route works with no secret in the payload.
+- [ ] `npm run deploy:sit` runs `assertDeployedVersion_` and passes.
+- [ ] A forced version mismatch fails the deploy with a non-zero exit and expected-vs-actual
+      printed, and still prints the summary so the operator can see what *is* deployed.
+- [ ] A wrong-target deploy is caught by the `target` check, not only the version check — verify
+      by asserting a `TEMPLATE`-stamped build against the SIT URL.
+- [ ] Polling tolerates the edge-propagation race: verify it succeeds on a real deploy where the
+      first poll returns the previous version.
+- [ ] The summary's version row is the server-confirmed value.
+- [ ] `--summary --env sit` reports the live version and flags divergence from local `version.js`.
+- [ ] Unit tests cover the assertion's match, version-mismatch, target-mismatch, and timeout paths
+      with an injected fake client (no live calls in the deterministic suite).
+- [ ] `node test/*.js` passes (tier 2).
+- [ ] F3Go30 `CLAUDE.md` documents `cmd=version` and the deploy-verification step.
 - [ ] Handoff Notes below are filled in.
 
 **Handoff Notes — Stage 1**
@@ -350,7 +587,9 @@ runCli({
 `bumpBuildNumber_` / `resetBuildNumber_`; `replaceConst` + `stampVersion`; `constStamper` and
 `buildInfoStamper`; `soleActiveDeployment` and `anchorMatch(anchor)`; `parseDeployments`;
 `execWithRetry`; `writeLedgerEntry` + `.deploy-metadata.json`; `pingWebapp`;
-`printDeploySummary`; the interactive menu and list/archive; the unit tests.
+`assertDeployedVersion` (§3.2, from Stage 1c); `lib/webapp.js` + `bin/call-webapp.js` (§3.3,
+extracted from F3Go30's and RCV's `tools/callWebapp.js`); `printDeploySummary`; the interactive
+menu and list/archive; the unit tests.
 
 `buildInfoStamper` and `anchorMatch` have no consumer until Stage 3 — build and unit-test them
 now anyway; they are the reason the package is a package.
@@ -375,15 +614,27 @@ now anyway; they are the reason the package is a package.
 - [ ] `postDeploy` hooks run in declared order; a `required:false` hook that throws produces a
       warning plus a retry command and does **not** fail the deploy; a `required:true` hook that
       throws fails it. Both covered by tests.
+- [ ] `assertDeployedVersion` is a mandatory, non-skippable step of `deploy()`; a test with an
+      injected fake client covers match, version-mismatch, target-mismatch and timeout.
+- [ ] `lib/webapp.js` never prints a secret and never places one in argv or a query string; a test
+      asserts this.
+- [ ] `bin/call-webapp.js` resolves the deployment URL from the live deployment list, not a stored
+      value, and follows GAS's POST→GET redirect.
+- [ ] F3Go30's and RCV's `tools/callWebapp.js` are thin wrappers over `lib/webapp.js` — action
+      lists and auth-field mapping only, no HTTP or URL-resolution code.
+- [ ] `test_callwebapp.js` deleted from both projects; equivalent coverage lives in the package.
 - [ ] F3Go30's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
 - [ ] RCV's `tools/manage-deployments.js` is under 80 lines and contains no `clasp` string.
 - [ ] RCV's per-target `claspAuthKey` (NUUC deploys under a separate Google account) still works
       — the package's auth resolution is per-target, not global.
 - [ ] `test_manage_deployments.js` deleted from both projects; equivalent coverage lives in the
       package.
-- [ ] F3Go30: `npm test` passes; `npm run deploy:sit` produces byte-comparable output to Stage 1's
-      run (modulo version/timestamp/revision).
-- [ ] RCV: `npm test` passes; `npm run deploy:sit` succeeds and prints the standard summary.
+- [ ] F3Go30: deterministic node suites pass; `pnpm run deploy:sit` produces byte-comparable output
+      to Stage 1's run (modulo version/timestamp/revision) and `assertDeployedVersion` passes.
+- [ ] RCV: node suites pass; `pnpm run deploy:sit` succeeds, `assertDeployedVersion` passes, and
+      the standard summary prints.
+- [ ] RCV gained a `cmd=version` route matching §3.2's contract.
+- [ ] Flaky suites baselined and compared per §4; no new failures. Recorded in Handoff Notes.
 - [ ] Neither project's PROD was deployed during this stage.
 - [ ] Both projects' `CLAUDE.md` point at the package for deploy internals.
 - [ ] Handoff Notes below are filled in.
@@ -428,20 +679,29 @@ project. GActionSheet gains fixes for #1, #6, #2 as a side effect.
    Decide, and record why.
 6. The `--verify` / `--verify-dev|test|prod` entry points stay project-local; they diff live
    Script Properties against `local.settings.json`, which is not the package's business.
+7. Add the `cmd=version` route (§3.2) reading `BUILD_INFO`, and wire `assertDeployedVersion`.
+8. **Decide the Python question (§3.3).** `scripts/call_webapp.py` is imported by pytest.
+   Recommendation: keep it as a Python port rather than shelling out per call, but add a contract
+   test that pins it to `lib/webapp.js` — same actions, same auth-field mapping, same env
+   synonyms — so the two cannot drift silently. Record the decision and rationale.
 
 **Acceptance criteria**
 - [ ] `manage-deployments.js` contains no direct `execSync('clasp …')` call.
 - [ ] Deploy stamps `BUILD_INFO.env` correctly for dev/test/production, unchanged from today.
 - [ ] Two consecutive `pnpm run deploy:test` runs produce two distinct `BUILD_INFO.version`
       strings differing only in the build segment.
-- [ ] `pnpm run deploy:test` prints the standard §3.1 summary as its last output, including the
-      static portal URL.
+- [ ] `pnpm run deploy:test` runs `assertDeployedVersion` against the TEST deployment and passes;
+      the standard §3.1 summary is the last output, including the static portal URL.
+- [ ] A forced mismatch fails the deploy — verified, not assumed.
+- [ ] `scripts/call_webapp.py`'s relationship to `lib/webapp.js` is settled and, if it remains a
+      Python port, a contract test pins the two together and passes.
 - [ ] `pnpm run verify:test` still passes and is unchanged in behaviour.
 - [ ] The deployment ledger (`deployment-ledger/test.jsonl`) still gains one line per deploy, in
       the same schema as before.
 - [ ] A forced `publishStaticPortal` failure warns with a retry command and the deploy still
       reports success.
-- [ ] `pnpm run test:smoke` passes against the redeployed TEST.
+- [ ] `pnpm run test:smoke` compared to a pre-change baseline per §4; no new failures. (This suite
+      is known flaky — the deploy gate is `assertDeployedVersion`, not this.)
 - [ ] PROD not deployed during this stage.
 - [ ] Any package API change made for GActionSheet is released as a new package tag and F3Go30 +
       RCV are re-pinned and re-verified with a SIT deploy each.
@@ -485,11 +745,13 @@ residue, docs aligned.
 - [ ] No `package-lock.json` remains in any of the five; `pnpm-lock.yaml` is committed in all five.
 - [ ] Across all five: `grep -n '"npm \|npx ' package.json` returns nothing.
 - [ ] Fresh `pnpm install` from a clean clone succeeds in all five.
-- [ ] Each project's full test command passes under pnpm (F3Go30's 40+ node suites, RCV's 7,
-      GActionSheet's `test:smoke`, PracticeMix's `test:unit`, NUUC-Dispatch's `node --test`).
+- [ ] Each project's **deterministic** suites pass under pnpm (F3Go30's node suites, RCV's 7,
+      PracticeMix's `test:unit`, NUUC-Dispatch's `node --test`). GActionSheet's `test:smoke` is
+      baselined per §4, not required green.
 - [ ] PracticeMix: `release:patch` verified — version bumps, tag created, deploy invoked, tag
       pushed. Not against PROD.
-- [ ] PracticeMix deploys to TEST successfully under pnpm.
+- [ ] PracticeMix deploys to TEST under pnpm (deploy gate is whatever verification it has at this
+      point; full `assertDeployedVersion` arrives in 5a).
 - [ ] The `gas-deploy` dependency resolves under pnpm in every consumer that has one so far
       (F3Go30, RCV, GActionSheet).
 - [ ] Any project `CLAUDE.md` or `docs/OPERATIONS.md` still saying `npm run …` is updated.
@@ -524,9 +786,15 @@ behind it — that is the main win here.
       failure mode no longer exists.
 - [ ] `buildInfoStamper` handles the `.html` version file (verify the existing regex still
       matches; extend the stamper's file-type handling in the package if not).
-- [ ] `pnpm run deploy:test` succeeds and prints the standard summary.
+- [ ] `cmd=version` route added (§3.2). PracticeMix's existing `status` action returns a cache
+      generation, not a version — extend or add alongside it; do not overload `status`.
+- [ ] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its live-deployment-
+      list URL resolution is the behaviour the package adopted (§3.3) — verify no regression.
+- [ ] `pnpm run deploy:test` succeeds, `assertDeployedVersion` passes, standard summary printed.
+- [ ] A forced mismatch fails the deploy.
 - [ ] `pnpm run verify:test` unchanged in behaviour.
-- [ ] `pnpm run test:unit` passes.
+- [ ] `pnpm run test:unit` passes (tier 2).
+- [ ] Playwright suites baselined per §4; no new failures.
 - [ ] Ledger and `.deploy-metadata.json` still written; `commit-deploy-stamp.js` still consumes
       the metadata correctly.
 - [ ] PROD not deployed.
@@ -544,8 +812,14 @@ Notable: already pnpm; already regenerates `.clasp.json` from `local.settings.js
       per-project config — verified against F3Go30/RCV, whose `.clasp.json` is minimal by design.
 - [ ] `build` counter added; two consecutive `deploy:test` runs produce distinct versions.
 - [ ] `clasp_config_auth` wired (fix #1).
-- [ ] `pnpm run deploy:test` succeeds, prints the standard summary, health check still runs.
-- [ ] `pnpm test` passes.
+- [ ] `cmd=version` route added (§3.2), replacing the ad-hoc version string currently embedded in
+      `WebApp.js`'s `doGet` text body as the machine-readable source.
+- [ ] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its `sit`/`test` env
+      synonym handling is the behaviour the package adopted (§3.3) — verify no regression.
+- [ ] `pnpm run deploy:test` succeeds, `assertDeployedVersion` passes, standard summary printed,
+      health check still runs.
+- [ ] A forced mismatch fails the deploy.
+- [ ] `pnpm test` passes (tier 2).
 - [ ] PROD not deployed.
 
 #### 5c — Retire the templates
@@ -565,6 +839,15 @@ otherwise seed the next project with all of §1's drift.
 - [ ] `best-practices/README.md` index rows updated for both folders.
 - [ ] The "Generated `.clasp.json` from `local.settings.json`" entry under §Noted Patterns is
       promoted into `gas-deployment/` — it is now package behaviour, present in all five projects.
+- [ ] `gas-deployment/README.md` documents **deploy verification (§3.2)** as a first-class pattern:
+      the `cmd=version` contract, why `clasp deploy` exiting 0 proves nothing, and why this
+      replaces end-to-end suites as the deploy gate. This is the most transferable practice in the
+      whole exercise — it belongs in the README, not buried in this plan.
+- [ ] The webapp caller (§3.3) is documented — either folded into `gas-webapp-admin/README.md`
+      (which already covers the `cmd=admin` + CLI-caller pattern for F3Go30/NUUC-Dispatch) or
+      given its own section here, cross-linked either way. Decide and record which.
+- [ ] `gas-webapp-admin/README.md` updated so it does not still present a hand-rolled per-project
+      caller as the recommended shape.
 - [ ] This RECOMMENDATION.md marked **Status: complete**, with all Handoff Notes filled.
 - [ ] A new GAS project can be stood up from `gas-deployment/README.md` alone, with no copying.
 
