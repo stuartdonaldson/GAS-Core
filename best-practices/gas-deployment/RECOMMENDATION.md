@@ -1305,27 +1305,135 @@ despite its own `only-allow pnpm`. Fix to `pnpm version`.
 residue, docs aligned.
 
 **Acceptance criteria**
-- [ ] All five projects declare `packageManager: pnpm@11.15.1` (identical string) and
+- [x] All five projects declare `packageManager: pnpm@11.15.1` (identical string) and
       `only-allow pnpm`.
-- [ ] No `package-lock.json` remains in any of the five; `pnpm-lock.yaml` is committed in all five.
-- [ ] Across all five: `grep -n '"npm \|npx ' package.json` returns nothing.
-- [ ] Fresh `pnpm install` from a clean clone succeeds in all five.
-- [ ] Each project's **deterministic** suites pass under pnpm (F3Go30's node suites, RCV's 7,
+- [x] No `package-lock.json` remains in any of the five; `pnpm-lock.yaml` is committed in all five.
+- [x] Across all five: `grep -n '"npm \|npx ' package.json` returns nothing.
+- [x] Fresh `pnpm install` from a clean clone succeeds in all five.
+- [x] Each project's **deterministic** suites pass under pnpm (F3Go30's node suites, RCV's 7,
       PracticeMix's `test:unit`, NUUC-Dispatch's `node --test`). GActionSheet's `test:smoke` is
       baselined per §4, not required green.
-- [ ] PracticeMix: `release:patch` verified — version bumps, tag created, deploy invoked, tag
+- [x] PracticeMix: `release:patch` verified — version bumps, tag created, deploy invoked, tag
       pushed. Not against PROD.
-- [ ] PracticeMix deploys to TEST under pnpm (deploy gate is whatever verification it has at this
+- [x] PracticeMix deploys to TEST under pnpm (deploy gate is whatever verification it has at this
       point; full `assertDeployedVersion` arrives in 5a).
-- [ ] The `gas-deploy` dependency resolves under pnpm in every consumer that has one so far
+- [x] The `gas-deploy` dependency resolves under pnpm in every consumer that has one so far
       (F3Go30, RCV, GActionSheet).
-- [ ] Any project `CLAUDE.md` or `docs/OPERATIONS.md` still saying `npm run …` is updated.
-- [ ] Handoff Notes below are filled in.
+- [x] Any project `CLAUDE.md` or `docs/OPERATIONS.md` still saying `npm run …` is updated.
+- [x] Handoff Notes below are filled in.
 
 **Handoff Notes — Stage 4**
-> _(fill in: whether PracticeMix hit the same `pnpm version` difference Stage 1b recorded,
-> anywhere `pnpm import` lost or changed a resolution, and confirmation that PracticeMix is
-> pnpm-ready for its Stage 5a conversion)_
+> **Status: all 9 ACs done (2026-08-22). PracticeMix migrated to pnpm, GActionSheet's `#11`
+> inconsistency fixed, and a cross-project `npx`/`npm` sweep found and fixed residue in
+> GActionSheet that Stage 3 hadn't touched. PracticeMix's PROD was never deployed.**
+>
+> ### 4a — PracticeMix
+> **`pnpm version` hit the exact same non-issue Stage 1b recorded.** PracticeMix's `release:*`
+> scripts have no `pre/postversion` lifecycle hooks (grepped `package.json` to confirm before
+> converting), so `pnpm version patch` and `npm version patch` are behaviourally identical here —
+> both bump `package.json`, commit, and tag. Nothing to work around.
+>
+> **`pnpm import` lost nothing** — straight `package-lock.json` → `pnpm-lock.yaml` conversion, no
+> resolution changes. Verified with a real `rm -rf node_modules && pnpm install --frozen-lockfile`
+> clean-room install (30 packages, matches the pre-migration count) and again from a fully
+> rsync'd clean clone in scratch.
+>
+> **`release:patch` verified in an isolated scratch copy, same method Stage 1b used for RCV** —
+> not the real repo, because `release:patch` deploys to PROD by design and PROD is out of scope
+> everywhere in this plan. `rsync`'d the working tree (excluding `node_modules`/`.git`) to scratch,
+> `git init`'d it with a local bare repo as `origin`, edited **only the scratch copy's**
+> `release:patch` to call `deploy:test` instead of `deploy:prod`, committed that one-line edit, then
+> ran `pnpm run release:patch` for real. Confirmed: `pnpm version patch` bumped 1.6.7→1.6.8, created
+> commit + `v1.6.8` tag; the deploy step ran a real `update-revision.js test` + `manage-deployments.js
+> --deploy-test` against PracticeMix's real TEST script project (deployment `AKfycbx6AZF5…` `@192→
+> @193`); `commit-deploy-stamp.js` read `.deploy-metadata.json` and committed the stamp; `git push
+> --follow-tags` pushed the commit + tag to the scratch bare remote (confirmed via `git log`/tag on
+> the bare repo). Scratch dirs deleted after verification.
+>
+> **`pnpm run deploy:test` also verified directly against the real repo** (not just the scratch
+> copy): build 1.6.7.0→1.6.7.1, deployment `AKfycbx6AZF5…` `@189→@192` (two runs — one direct, one
+> via `pnpm install` cache-warm — see `deployment-ledger/test.jsonl`), summary/URL printed at the
+> end. **PracticeMix has no `assertDeployedVersion`/`cmd=version` route yet** (that's Stage 5a) —
+> the deploy gate here is exactly what it was before the migration, `clasp deploy` exiting 0 plus
+> the printed URL, unchanged in nature, just running under pnpm now.
+>
+> **`pnpm test:unit` (74 tests) green** in both the real repo and a clean-room clone.
+> `pnpm run verify:test` could not be exercised end-to-end — the saved Playwright auth session in
+> `.auth/user.json` had already expired (HTTP 401 asking to re-run `pnpm run auth`, which opens an
+> interactive browser login this session can't drive). This is a pre-existing auth-expiry condition
+> unrelated to the pnpm migration, not a new failure — `verify:test` isn't in Stage 4's AC list, and
+> `deploy:test` (which is) succeeded independently, live, twice. Flagged for whoever runs 5a: refresh
+> `.auth/user.json` before relying on `verify:test`.
+>
+> **Doc + source-string sweep, wider than the AC strictly required, done for consistency**: every
+> `npm run …`/`npm test`/`npm version` instruction string was converted to `pnpm` in `CLAUDE.md`,
+> `README.md`, `AGENTS.md`, `docs/playwright-testing.md`, `docs/reference/clasp-notes.md`,
+> `tests/README.md`, `screenshots/README.md`, `.auth/README.md`, and the operator-facing
+> console/error strings inside `manage-deployments.js`, `update-revision.js`, `tools/call-webapp.js`,
+> `test-auth.js`, `authenticate.js`, `playwright.config.js`. Left alone deliberately: `npm install -g
+> @google/clasp` (global CLI install, not a project script — matches F3Go30's and GActionSheet's own
+> README convention) and every mention of `npm version` as prose describing what the command itself
+> does (`commit-deploy-stamp.js`'s comment, `README.md`'s "All version bumps go through `pnpm
+> version`" — that line already reads correctly since it's describing what runs now, not npm).
+> ADRs, `CHANGELOG.md`, `work-log.md`, and `docs/lessons-learned/resolved/*` were **not** touched —
+> historical/immutable records, not operational instructions.
+>
+> ### 4b — GActionSheet (#11)
+> `release:patch|minor|major` converted from `npm version` to `pnpm version` — confirmed no
+> `pre`/`postversion` hooks exist (same non-issue as PracticeMix, same check performed first). Not
+> re-verified end-to-end against PROD (out of scope; Stage 3's Handoff Notes already cover
+> `commit-deploy-stamp.js`'s new `deployMetadata` shape for this path).
+>
+> ### 4c — Cross-project consistency sweep
+> **Found real residue Stage 3 didn't touch, because Stage 3's scope was `#11` specifically, not a
+> full sweep**: GActionSheet's `test:smoke`, `test:full`, `test:playwright:debug`,
+> `test:playwright:blank-doc`, `probe`, and `probe:test.u2` all called `npx playwright` directly.
+> Converted all six to `pnpm exec playwright`. F3Go30, RankChoiceVoting, and NUUC-Dispatch had zero
+> `npm`/`npx` residue in `package.json` already (checked explicitly, not assumed).
+>
+> **Verified the `npx`→`pnpm exec` conversion is behaviour-preserving, live**: ran
+> `pnpm run test:smoke` for real against GActionSheet's TEST deployment. Result: **1 failed / 1
+> passed**, the exact same test failing the exact same way as Stage 3's recorded baseline
+> (`smoke.test.js:20 … deployed version is visible`, `Timed out locating add-on frame with Sync now
+> control` — the add-on test deployment still isn't installed in the test Google account, an
+> environmental condition documented in `docs/OPERATIONS.md`, unrelated to pnpm). No new failures.
+> `test-results/` is gitignored, nothing to clean up.
+>
+> **Clean-room installs run for all five, from a fresh `rsync` (not `git clone`, since PracticeMix's
+> and GActionSheet's edits were still uncommitted at verification time) into scratch, excluding
+> `node_modules`/`.git`, then `pnpm install --frozen-lockfile`**: all five succeeded. `gas-deploy`
+> resolved to the pinned `gas-deploy-v1.1.0` tag's SHA (`545c41a2…`) in F3Go30, RankChoiceVoting, and
+> GActionSheet's lockfiles alike — the same SHA in all three, confirming re-pinning in Stage 3 is
+> holding and nothing drifted.
+>
+> **Deterministic suites, all green in the clean-room clones**: F3Go30 `pnpm test` (all node
+> suites, exit 0), RCV `pnpm test` (7 suites, exit 0), NUUC-Dispatch `pnpm test` (21 tests, exit 0),
+> PracticeMix `pnpm run test:unit` (74 tests, exit 0). GActionSheet has no project-level `pnpm test`
+> script (per Stage 3's notes — its deterministic gate is the package's own suite plus the pytest
+> contract test, neither of which are Stage 4 ACs); its live `test:smoke` baseline comparison above
+> stands in for it here.
+>
+> **`CLAUDE.md`/`docs/OPERATIONS.md` sweep across all five turned up nothing left to fix** — every
+> remaining `npm` substring in those files across F3Go30, RCV, GActionSheet, and NUUC-Dispatch was
+> already `pnpm` (a naive `grep 'npm '` false-positives on `pnpm` itself; re-ran with a
+> pnpm-excluding pattern to confirm). PracticeMix's three lines were the only real hits, fixed above.
+>
+> ### What Stage 5 needs to know
+> - **PracticeMix is pnpm-ready for 5a.** No blockers found: `pnpm import` was clean, `release:*`
+>   and `deploy:*` both proven to work end-to-end under pnpm, and the only outstanding gap
+>   (`verify:test`'s expired auth session) is unrelated to package-manager migration and will
+>   surface again in 5a regardless — refresh `.auth/user.json` first.
+> - **PracticeMix has no `cmd=version` route or `assertDeployedVersion` yet** — confirmed by
+>   reading `manage-deployments.js`/`tools/call-webapp.js`, not assumed. 5a's own AC list already
+>   covers adding both; nothing pre-built here.
+> - **PracticeMix's real TEST deployment moved during this stage's verification**
+>   (`AKfycbx6AZF5…` `@189→@193`, `deployment-ledger/test.jsonl` now has the extra entries) — this
+>   is a real, intentional side effect of proving `deploy:test` works under pnpm, not a leftover to
+>   revert. Package.json's `build` counter is at whatever the last deploy left it; 5a should read it
+>   fresh rather than assuming a specific value.
+> - **`infrastructure-upgrade-plan.md`'s deletion in PracticeMix's working tree predates this
+>   session** (present in the initial `git status` before any Stage 4 work started) and is
+>   unrelated to the pnpm migration — left untouched and **not included** in this stage's commit.
 
 ---
 
