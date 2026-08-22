@@ -70,12 +70,12 @@ function normalizeEnv(env, envMap) {
  * Resolves the deployment ID for an env: live list first when a resolver is configured, falling
  * back to the settings key so this still works with no clasp auth available.
  */
-function resolveEnvDeploymentId(config, envKey, settings) {
+function resolveEnvDeploymentId(config, envKey, settings, { exec = execSync } = {}) {
   const target = config.envMap[envKey];
   if (config.resolveFromLiveList !== false && target.scriptIdKey && settings[target.scriptIdKey]) {
     try {
       const env = claspEnv(settings, target.authKey);
-      const listOutput = execSync('clasp deployments', { cwd: config.root, env }).toString();
+      const listOutput = exec('clasp deployments', { cwd: config.root, env }).toString();
       return resolveDeploymentId(config.resolveDeployment || standardChain(target.anchor), {
         listOutput, settings, target, targetKey: envKey,
       });
@@ -101,7 +101,7 @@ async function run(config, argv = process.argv) {
   const envKey = normalizeEnv(env, config.envMap);
   const target = config.envMap[envKey];
 
-  const deploymentId = resolveEnvDeploymentId(config, envKey, settings);
+  const deploymentId = resolveEnvDeploymentId(config, envKey, settings, { exec: config.exec });
 
   // `securedCmds` scopes the secret to the endpoints that actually gate on it. F3Go30 has
   // several cmd endpoints (admin, signup, checkin) and only cmd=admin is secret-gated; sending
