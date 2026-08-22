@@ -1066,30 +1066,208 @@ project. GActionSheet gains fixes for #1, #6, #2 as a side effect.
    synonyms — so the two cannot drift silently. Record the decision and rationale.
 
 **Acceptance criteria**
-- [ ] `manage-deployments.js` contains no direct `execSync('clasp …')` call.
-- [ ] Deploy stamps `BUILD_INFO.env` correctly for dev/test/production, unchanged from today.
-- [ ] Two consecutive `pnpm run deploy:test` runs produce two distinct `BUILD_INFO.version`
+- [x] `manage-deployments.js` contains no direct `execSync('clasp …')` call.
+- [x] Deploy stamps `BUILD_INFO.env` correctly for dev/test/production, unchanged from today.
+- [x] Two consecutive `pnpm run deploy:test` runs produce two distinct `BUILD_INFO.version`
       strings differing only in the build segment.
-- [ ] `pnpm run deploy:test` runs `assertDeployedVersion` against the TEST deployment and passes;
+- [x] `pnpm run deploy:test` runs `assertDeployedVersion` against the TEST deployment and passes;
       the standard §3.1 summary is the last output, including the static portal URL.
-- [ ] A forced mismatch fails the deploy — verified, not assumed.
-- [ ] `scripts/call_webapp.py`'s relationship to `lib/webapp.js` is settled and, if it remains a
+- [x] A forced mismatch fails the deploy — verified, not assumed.
+- [x] `scripts/call_webapp.py`'s relationship to `lib/webapp.js` is settled and, if it remains a
       Python port, a contract test pins the two together and passes.
-- [ ] `pnpm run verify:test` still passes and is unchanged in behaviour.
-- [ ] The deployment ledger (`deployment-ledger/test.jsonl`) still gains one line per deploy, in
+- [x] `pnpm run verify:test` still passes and is unchanged in behaviour.
+- [x] The deployment ledger (`deployment-ledger/test.jsonl`) still gains one line per deploy, in
       the same schema as before.
-- [ ] A forced `publishStaticPortal` failure warns with a retry command and the deploy still
+- [x] A forced `publishStaticPortal` failure warns with a retry command and the deploy still
       reports success.
-- [ ] `pnpm run test:smoke` compared to a pre-change baseline per §4; no new failures. (This suite
+- [x] `pnpm run test:smoke` compared to a pre-change baseline per §4; no new failures. (This suite
       is known flaky — the deploy gate is `assertDeployedVersion`, not this.)
-- [ ] PROD not deployed during this stage.
-- [ ] Any package API change made for GActionSheet is released as a new package tag and F3Go30 +
+- [x] PROD not deployed during this stage.
+- [x] Any package API change made for GActionSheet is released as a new package tag and F3Go30 +
       RCV are re-pinned and re-verified with a SIT deploy each.
-- [ ] Handoff Notes below are filled in.
+- [x] Handoff Notes below are filled in.
 
 **Handoff Notes — Stage 3**
-> _(fill in: package API changes forced by lineage A, the `deployDev` decision and rationale, the
-> credential file GActionSheet deploys with, anything PracticeMix/NUUC-Dispatch will hit)_
+> **Status: all 13 ACs done (2026-08-22). GActionSheet converted, verified live against TEST five
+> times (including two deliberate failure runs). PROD was never deployed. Package cut as
+> `gas-deploy-v1.1.0`; F3Go30 and RankChoiceVoting re-pinned and each re-verified with a real SIT
+> deploy.**
+>
+> ### The credential file GActionSheet deploys with — determined, not guessed
+> `~/.clasprc-sdonaldson.json` (`sdonaldson@northlakeuu.org`), now recorded as `claspAuth` in
+> `local.settings.json` and `.example`. Determined empirically, and the method is worth reusing in
+> Stage 5: **there was no `~/.clasprc.json` on this machine at all**, so the pre-package
+> `execSync('clasp push -f')` was working only because clasp resolved *something* else — exactly
+> the invisible dependency finding #1 describes. What settles it is two commands, no file reading:
+> ```bash
+> clasp_config_auth=~/.clasprc-sdonaldson.json clasp show-authorized-user   # who is this file?
+> clasp_config_auth=~/.clasprc-sdonaldson.json clasp deployments            # can it see THIS project?
+> ```
+> The second is the real test — an account that lists this script project's deployments is the
+> account that can push to it. Do this per project in 5a/5b rather than assuming one account.
+>
+> ### Package API changes lineage A forced (all in `gas-deploy-v1.1.0`)
+> Four additions, every default unchanged, so nothing moved under F3Go30/RCV until they re-pinned.
+> All four are the same shape of problem: **a project's existing runtime and tooling read what the
+> deploy writes**, and §5 puts changing them out of scope — so the package had to bend, not them.
+>
+> - **`claspFields`** (object or `(ctx) => object`) — the rest of `.clasp.json`. Stage 2's
+>   `writeClasp_` wrote `{scriptId, rootDir}` and nothing else; GActionSheet's file also carries
+>   `projectId` (the GCP project behind Cloud Logging), `parentId`, and the extension lists that
+>   decide **which files `clasp push` actually sends**. Regenerating from two keys would have
+>   silently changed the push. `scriptId`/`rootDir` are written last and cannot be overridden by
+>   config — there is a test for that, because a config that could redirect the target would be a
+>   worse bug than the one this fixes. **This is the same need Stage 5b already anticipated for
+>   NUUC-Dispatch's `ensureClaspJson()` — it is now built; 5b should configure it, not re-add it.**
+> - **`resolveBeforeStamp: true`** — resolve the deployment *before* the stamp instead of after the
+>   push. Lineage A stamps the deployment's own /exec URL into the version file
+>   (`BUILD_INFO.webappUrl` is literally what the GAS runtime's `getWebAppUrl()` returns), so the
+>   URL must be known before the source that carries it is pushed. It costs **no extra
+>   `clasp deployments` call** — the same resolution simply happens earlier — and it is opt-in
+>   purely so Stage 2's consumers keep their exact failure ordering (for them, a resolution failure
+>   still happens after the push). A lineage-A project that stamps its own URL must set it;
+>   PracticeMix's `version.html` should be checked for the same field in 5a.
+> - **`buildInfoStamper({ fields, extraFields })`** — `fields` renames the four standard keys
+>   because the GAS runtime reads them *by name* (`BUILD_INFO.buildDate`, `.webappUrl`);
+>   `extraFields` may now be a **function of the stamp context**, because a project field can vary
+>   per target. GActionSheet's `env` (`test`/`production`/`dev`) is the source of truth for its
+>   Axiom `env` column and is deliberately a **different vocabulary** from `target`
+>   (`TEST`/`PRODUCTION`), which is what the cmd=version contract compares. Both are now stamped;
+>   neither is derived from the other.
+> - **`ledgerEntry` / `deployMetadata`** (`(ctx) => object`) — a consumer-shaped record is written
+>   **verbatim**, with no `at`/`user` keys added. GActionSheet's ledger predates the package and has
+>   three readers (`write-environment.py`, `archive/generate-pipeline-report.py`,
+>   `commit-deploy-stamp.js`); rewriting its schema would have orphaned every existing line while
+>   leaving the file superficially fine. Verified live: the new lines are key-for-key identical to
+>   the pre-package ones.
+>
+> ### The trap this stage actually fell into — read this before Stage 5a
+> **`buildInfoStamper` writes a JSON-shaped literal with _quoted_ keys (`"env": "test"`); every
+> lineage-A project's existing readers parse the version file as text with _bare_-key regexes
+> (`/env:\s*"([^"]*)"/`).** Both are valid JS, so nothing throws — the regexes just silently return
+> empty. It surfaced on the very first converted deploy as
+> `build-static-portal: src/Version.js is currently stamped for BUILD_INFO.env=""`, and three
+> readers were affected (`scripts/build-static-portal.js`, `tests/helpers/version.py`, and the
+> `readLocalVersion` closure in the new `manage-deployments.js`). Fixed by making each reader
+> accept **both** shapes (`'"?' + name + '"?\\s*:\\s*"([^"]*)"'`), which is also what lets an old
+> checkout still parse. The package was deliberately **not** changed to emit bare keys: a
+> JSON-parseable generated literal is the better artifact, and its Stage 2 test asserts that
+> property.
+>
+> **PracticeMix (5a) will hit this identically** — `src/version.html` has the same bare-key shape
+> and `update-revision.js` reads it back. Before converting, run
+> `grep -rn 'version:\s*"' <project>` and fix every hit *before* the first deploy, not after.
+> More generally: **the deploy gate (`assertDeployedVersion`) does not catch this class of bug** —
+> the deploy verified green while the static-portal build was broken, because the version file is
+> correct on the wire and only wrong to a *text* reader. The optional hook's warning was the only
+> signal.
+>
+> ### The `deployDev` decision (work item 5): kept project-local, no `head: true` target mode
+> **Rationale, and it is a contract argument rather than a convenience one.** The package's
+> `deploy()` has over-the-wire verification as its non-skippable final step — `invariants.test.js`
+> asserts there is no skip flag, and that invariant is the most valuable thing the package adds
+> (§3.2). A HEAD push has **no named deployment** and **no anonymously reachable URL**: the `/dev`
+> endpoint requires an authenticated editor session (which is why `verifyConfig('dev')` loads
+> Playwright cookies). A `head: true` target mode would therefore have to opt *out* of the
+> package's central invariant, and once one target can skip verification, the invariant is a
+> convention rather than a structural guarantee. So `deployDev` stays in
+> `manage-deployments.js` — **but it runs clasp through the package's `claspEnv`/`execWithRetry`,
+> so finding #1 is fixed there too.** There is no `execSync('clasp …')` anywhere in the project.
+> NUUC-Dispatch and PracticeMix should apply the same rule to any non-verifiable push mode.
+>
+> ### The Python caller decision (work item 8): stays a Python port, pinned by a contract test
+> `scripts/call_webapp.py` is **imported** by the pytest harness (`scn.session` and several
+> helpers), not just run as a CLI. Shelling out to `bin/call-webapp.js` would put a node process
+> start in the inner loop of a suite that makes hundreds of WebApp calls, and force every caller to
+> marshal results across a subprocess boundary for no behavioural gain. **What the consolidation was
+> protecting against is drift, not duplication** — so drift is what gets pinned:
+> `tests/test_call_webapp_contract.py` (10 tests, ~39s, no network) asserts the four §3.3
+> properties on **both** sides, reading `node_modules/gas-deploy/lib/webapp.js` and
+> `bin/call-webapp.js` as text rather than restating their rules: secret in the POST body only
+> (never argv, query string, or output), POST→GET redirect followed, non-JSON response is a failure
+> not a result, and `sit`/`test` as synonyms. It skips cleanly when the package is not installed.
+> Per the Backstop rule, each new assertion was **demonstrated to fail** against a violating input,
+> not merely shown green.
+>
+> ### Live verification (TEST only — PROD untouched)
+> Five real deploys against `AKfycbzVloY3…`, all with the full hook chain:
+> | run | version | rev | outcome |
+> |---|---|---|---|
+> | 1 | v0.2.2.1 | @461 | ✅ verified. Static-portal hook failed on the quoted-key bug above — **warned, printed its retry command, deploy still succeeded** (the `required:false` contract, unforced) |
+> | 2 | v0.2.2.2 | @462 | ✅ verified, every hook green, portal published to `Static/pub/AS-sit/` |
+> | 3 | v0.2.2.3 | @463 | **forced hook failure** — the portal hook replaced with a throw: warned + retry command, `deploy()` returned `ok:true`, exit code untouched |
+> | 4 | v0.2.2.4 | @464 | **forced version mismatch** — stamper made to write `9.9.9.9`: `❌ Deploy verification failed: … expected version=0.2.2.4 target=TEST, last seen version=9.9.9.9 target=TEST`, summary **still printed**, `process.exitCode = 1` |
+> | 5 | v0.2.2.5 | @465 | ✅ clean restore |
+>
+> Runs 3 and 4 used scratch drivers (`/tmp/jobs/forced-*.js`) that `require` the project's exported
+> `config` and override exactly one thing before calling the package's real `deploy()`. **This is
+> the end-to-end failing deploy Stage 1c flagged as never having been exercised** — it needed no
+> test seam in `deploy()` after all, because a consumer's config is itself the seam. Reuse the
+> pattern in 5a/5b instead of adding hooks to production code.
+>
+> Also verified live: `?cmd=version` on GET (`curl`, no secret) and on POST via the package's own
+> client; `--summary --env test` (read-only — confirmed it left `.clasp.json` byte-identical and
+> stamped nothing); `pnpm run verify:test` unchanged in behaviour; ledger and
+> `.deploy-metadata.json` schemas.
+>
+> **A curl caveat worth knowing:** `curl -sL -X POST '…/exec?cmd=version'` returns Google's
+> "Sorry, unable to open the file" page — curl re-issues the POST to the 302 target rather than
+> following it as a GET. That is a curl invocation problem, not a route problem; the same POST via
+> `gas-deploy`'s client returns the JSON. Use `curl` for the **GET** form only.
+>
+> ### Re-pinning F3Go30 and RCV (the AC that keeps the package honest)
+> ```bash
+> sed -i 's|gas-deploy-v1.0.0|gas-deploy-v1.1.0|' package.json
+> pnpm update gas-deploy          # plain `pnpm install` will NOT move the locked SHA
+> grep tar.gz pnpm-lock.yaml      # confirm 545c41a…
+> pnpm test && pnpm run deploy:sit
+> ```
+> - **F3Go30**: node suites green; `pnpm run deploy:sit` v2.5.0.14 → **v2.5.0.15**, `@274`→`@275`,
+>   `✅ TEST verified`.
+> - **RCV**: node suites green; `pnpm run deploy:sit` v0.1.6.3 → **v0.1.6.4**, `@36`→`@37`,
+>   `✅ SIT verified`. Its `bootstrapSecret` hook warned again (already bootstrapped) — the known,
+>   expected `required:false` path, unchanged from Stage 2.
+> - Neither project's PROD or NUUC was touched.
+>
+> ### Flaky-suite baseline (§4)
+> `pnpm run test:smoke` captured **before** any change and again after: **identical — 1 failed,
+> 1 passed** both times, the same test (`smoke.test.js:20 … deployed version is visible`) failing
+> the same way (`Timed out locating add-on frame with Sync now control`). That failure is
+> environmental, not a regression: the add-on **test deployment is not currently installed in the
+> test Google account** (`docs/OPERATIONS.md` documents the install step). No new failures.
+> Two related things were fixed so the version-string change did not break the UI helpers:
+> `scn/ui.py`'s `_VERSION_FOOTER_RE` now accepts both `v0.2.2.7` and the legacy
+> `v0.2.1 (Rev. …) (TEST)` shape, and `tests/helpers/version.py` is quote-tolerant. The
+> Playwright smoke's own `^v\d+\.\d+\.\d+` regex needed no change.
+>
+> ### Things Stage 4 and Stage 5 should know
+> - **Stage 4b (#11) is still open and is now the only npm residue here**: GActionSheet's
+>   `release:patch|minor|major` still call `npm version` despite `only-allow pnpm`. Deliberately
+>   left — it is Stage 4b's AC, not Stage 3's. Everything else operator-facing in this project now
+>   says `pnpm run …`, including the strings inside `scripts/deploy-hooks.js`.
+> - **`commit-deploy-stamp.js` was updated, and only matters for `release:*` (a PROD path).** The
+>   old script parsed the product version and timestamp back out of the deployment *description*;
+>   the new `deployMetadata` shaper writes `productVersion` and `at` explicitly, with the old
+>   regexes kept as a fallback for metadata written before this change. **It has not been exercised
+>   end to end, because doing so requires a PROD deploy** (§5). Whoever runs the next release should
+>   watch that step.
+> - **PRODUCTION's first converted deploy will bump the semver patch and reset `build`** (0.2.2 →
+>   0.2.3, `counter: 'version'`), and stamps `v<version>` with no build segment. That is the
+>   intended #6 behaviour, but it is a visible version jump the operator should expect.
+> - **`prodSheetId` is not a real key** in this project's settings, so PROD's summary prints
+>   `(prodSheetId not set in local.settings.json)`. That is the placeholder contract working, not a
+>   misconfiguration — GActionSheet has one spreadsheet, referenced as `testSheetId`.
+> - **The `cmd=version` route stays per-project GAS code**, as in every other consumer. In this
+>   project it is routed ahead of *four* gates (ADMIN_SECRET, TEST_TOKEN, WEBAPP_SECRET, and the
+>   probe/spike bypasses) in both `doGet` and `doPost`, and it returns `env` alongside the contract
+>   fields — an extra key, harmless to the package, useful to an operator.
+> - **Hooks moved verbatim into `scripts/deploy-hooks.js`** (§5: hooks move, their behaviour does
+>   not). They still use their own `fetch` rather than the package's client; `verifyConfig` in
+>   particular needs cookie auth for `/dev`, which the anonymous /exec client has no business
+>   knowing about. Do not "tidy" this into the package in 5c.
+> - **`pnpm test` does not exist in this project** — there is no aggregate node suite. The
+>   deterministic gate here is the package's own `node --test` (74 tests) plus the pytest contract
+>   test; the pytest journey suite is live-backed and out of this stage's scope.
 
 ---
 
