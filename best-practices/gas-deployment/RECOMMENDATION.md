@@ -823,7 +823,7 @@ now anyway; they are the reason the package is a package.
 - [x] RCV: node suites pass; `pnpm run deploy:sit` succeeds, `assertDeployedVersion` passes, and
       the standard summary prints.
 - [x] RCV gained a `cmd=version` route matching §3.2's contract.
-- [ ] Flaky suites baselined and compared per §4; no new failures. Recorded in Handoff Notes.
+- [x] Flaky suites baselined and compared per §4; no new failures. Recorded in Handoff Notes.
 - [x] Neither project's PROD was deployed during this stage.
 - [x] Both projects' `CLAUDE.md` point at the package for deploy internals.
 - [x] Handoff Notes below are filled in.
@@ -967,9 +967,25 @@ now anyway; they are the reason the package is a package.
 > pre-existing, out of scope per §5), then a fully clean rerun.
 >
 > Run against the converted code: **4 failed / 46 passed** on the first attempt — 3 of them the
-> `adminSecretKey` break above, 1 the known `"Not now"` flake. After the fix, the rerun result is
-> recorded below this section. Treat `"Not now"` as an expected baseline failure until someone
-> files it; **it is still not fixed and is still out of scope.**
+> `adminSecretKey` break above, 1 the known `"Not now"` flake. After the fix: **50 passed /
+> 1 failed (13.7m)** — the same count as the baseline.
+>
+> **The one failure was a *different* test from the baseline's, and that is worth reading
+> carefully.** It was `static-checkin.spec.js:283` `cold cache, click Hit/Miss immediately (racing
+> the background prefetch)…`, which timed out after 30s on an `expect.poll` waiting for a live SIT
+> write to show up through a dashboard round-trip. Settled as a flake by two independent facts,
+> not by assumption: it **passed in isolation** on rerun (49.6s), and it **passed in the
+> immediately preceding full run** which already had the entire package conversion in place and
+> differed only in the `adminSecretKey` bug — a bug in a code path that test never touches. Note
+> the mirror image: the baseline's `"Not now"` test passed in this run. The two trade places.
+>
+> **So update the baseline: `static-checkin.spec.js` has *two* known flaky tests, not one**, both
+> races against live SIT, both passing in isolation — `:283` (live round-trip poll timeout) and
+> `:718` `"Not now"` (browser-context teardown, missing an early `unrouteAll` its neighbour has).
+> A future stage seeing exactly one failure in that file, in either test, has matched the
+> baseline. Two or more, or a failure anywhere else, is a real regression worth stopping for.
+> **Neither flake is fixed — both remain out of scope per §5**; filed as F3Go30 bd `F3Go30-e5b7` for
+> whoever picks up test health.
 >
 > ### Deliberate deviations Stage 3 should know about
 > - **`deployment-ledger/` and `.deploy-metadata.json` are gitignored in both consumers.** #7
