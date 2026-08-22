@@ -979,7 +979,19 @@ now anyway; they are the reason the package is a package.
 >   knows where its stamper wrote. Nothing about this changed in Stage 2 and nothing should.
 >
 > ### Consumer size
-> F3Go30 `tools/manage-deployments.js` 84 → **under 80** lines after a comment pass; RCV's **79**.
+> Both `tools/manage-deployments.js` files are **79 lines** with **zero** `clasp` strings. Getting
+> there took two comment passes — the first drafts were 84 and 88 — and the trimming is worth
+> knowing about: what got cut was duplicated prose (the `month`-target history, already in
+> `docs/deployment-model.md`) and blank separators, not the incident references. **Keep
+> `F3Go30-x2vd`, `F3Go30-e3co` and the 2026-08-20 quota-incident notes on their hooks** — they are
+> the only remaining explanation of why those hooks exist and in that order.
+>
+> One structural temptation to resist: each consumer's 5-line `readLocalVersion` closure is
+> near-identical boilerplate, and it is tempting to move it into `constStamper` as a `read()`
+> companion. **Do not.** It would make the package read a stamped file, which is exactly what
+> `test/invariants.test.js` asserts it never does (#5). Five duplicated lines per consumer is the
+> price of keeping that invariant literal and machine-checkable; it is a good trade.
+>
 > Both contain **zero** `clasp` strings — which is why the package's config fields are `authKey`
 > and `rootDir` rather than `claspAuthKey`/`claspRootDir`, with the `'claspAuth'` default living
 > in the package. A consumer names an `authKey` only when it deviates (RCV's NUUC target).
