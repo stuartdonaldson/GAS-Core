@@ -1210,6 +1210,13 @@ project. GActionSheet gains fixes for #1, #6, #2 as a side effect.
 > stamped nothing); `pnpm run verify:test` unchanged in behaviour; ledger and
 > `.deploy-metadata.json` schemas.
 >
+> **`--summary --env prod` is also the proof PROD was not touched** — Stage 2's notes recommend
+> this trick and it works here too: it resolved PROD's own deployment (`AKfycbynLp8F…` `@302`,
+> unchanged all session) through `anchorMatch('PROD-WEB-APP')`, printing
+> `⚠️  Could not reach PRODUCTION's cmd=version route` because PROD has not been redeployed since
+> the route was added. That warning *is* the evidence. It also exercised the placeholder contract:
+> `Spreadsheet: (prodSheetId not set in local.settings.json)`.
+>
 > **A curl caveat worth knowing:** `curl -sL -X POST '…/exec?cmd=version'` returns Google's
 > "Sorry, unable to open the file" page — curl re-issues the POST to the 302 target rather than
 > following it as a GET. That is a curl invocation problem, not a route problem; the same POST via
