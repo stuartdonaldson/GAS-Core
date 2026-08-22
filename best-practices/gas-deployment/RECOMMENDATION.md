@@ -1661,21 +1661,21 @@ Notable: already pnpm; already regenerates `.clasp.json` from `local.settings.js
 `writeClasp` should match its richness: `projectId`, `scriptExtensions`, etc.). Version is
 `0.0.0`, spike-scoped, with no build counter.
 
-- [ ] `manage-deployments.js` converted to `runCli`.
-- [ ] Package's `writeClasp` writes the full `.clasp.json` shape `ensureClaspJson()` produced
+- [x] `manage-deployments.js` converted to `runCli`.
+- [x] Package's `writeClasp` writes the full `.clasp.json` shape `ensureClaspJson()` produced
       (`projectId`, `scriptExtensions`, `htmlExtensions`, `jsonExtensions`, `rootDir`), driven by
       per-project config — verified against F3Go30/RCV, whose `.clasp.json` is minimal by design.
-- [ ] `build` counter added; two consecutive `deploy:test` runs produce distinct versions.
-- [ ] `clasp_config_auth` wired (fix #1).
-- [ ] `cmd=version` route added (§3.2), replacing the ad-hoc version string currently embedded in
+- [x] `build` counter added; two consecutive `deploy:test` runs produce distinct versions.
+- [x] `clasp_config_auth` wired (fix #1).
+- [x] `cmd=version` route added (§3.2), replacing the ad-hoc version string currently embedded in
       `WebApp.js`'s `doGet` text body as the machine-readable source.
-- [ ] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its `sit`/`test` env
+- [x] `tools/call-webapp.js` reduced to a thin wrapper over `lib/webapp.js`. Its `sit`/`test` env
       synonym handling is the behaviour the package adopted (§3.3) — verify no regression.
-- [ ] `pnpm run deploy:test` succeeds, `assertDeployedVersion` passes, standard summary printed,
+- [x] `pnpm run deploy:test` succeeds, `assertDeployedVersion` passes, standard summary printed,
       health check still runs.
-- [ ] A forced mismatch fails the deploy.
-- [ ] `pnpm test` passes (tier 2).
-- [ ] PROD not deployed.
+- [x] A forced mismatch fails the deploy.
+- [x] `pnpm test` passes (tier 2).
+- [x] PROD not deployed.
 
 #### 5c — Retire the templates
 
@@ -1706,8 +1706,158 @@ otherwise seed the next project with all of §1's drift.
 - [ ] This RECOMMENDATION.md marked **Status: complete**, with all Handoff Notes filled.
 - [ ] A new GAS project can be stood up from `gas-deployment/README.md` alone, with no copying.
 
-**Handoff Notes — Stage 5**
-> _(fill in per sub-stage)_
+**Handoff Notes — Stage 5b (NUUC-Dispatch)**
+> **Status: all 10 ACs done and verified live against the real TEST deployment
+> (2026-08-22). Stage 5b is closed.** PROD was never deployed, at any point in the
+> session; `clasp deployments` was re-checked after every step and PROD stayed `@2`.
+>
+> ### `manage-deployments.js` — pure config, modeled on GActionSheet's Stage 3 shape
+> NUUC-Dispatch is lineage A (one script project, TEST/PROD told apart by an anchor
+> string in the deployment description — same as GActionSheet), so its conversion is
+> close to line-for-line GActionSheet's: `targets: { test, production }` each with
+> `scriptIdKey: 'scriptId'`, `counter: 'build'`/`'version'`, `anchor` +
+> `resolveDeployment: anchorMatch(anchor)`, `envAliases: { prod: 'production', sit: 'test' }`,
+> `resolveBeforeStamp: true` (BUILD_INFO.webappUrl is the deployment's own /exec URL),
+> `describeDeployment` keeping the anchor in the description for the next resolve. Unlike
+> GActionSheet there is no `postDeploy` array at all — the old hooks
+> (`pingWebappUrl`/`verifyHealth`) were literally hand-rolled versions of what
+> `assertDeployedVersion` now does structurally and better, so they were dropped rather
+> than ported; nothing they did is now missing, it's mandatory and stricter. `--deploy-dev`
+> (HEAD push) and `--manage` (list/archive) stay project-local exactly as GActionSheet's
+> do, for the same reason (`/dev` has no anonymously-reachable URL to verify against) —
+> ported using `claspEnv`/`execWithRetry`/`parseDeployments` from the package so the
+> credential-fallback fix (#1) and edge-propagation retry (#9) land there too. One
+> difference from GActionSheet's `deployDev`: `parseDeployments` (package) filters out the
+> `@HEAD` row entirely (by design — it's not a named deployment), so the HEAD deployment ID
+> for the `/dev` URL is read off a raw `clasp deployments` line match instead
+> (`headLine.match(/^-\s*(\S+)/)`) rather than via the package's parser. `--verify-test` is
+> now `summary(config, 'test')` — a read-only live query — superseding the old ad-hoc
+> "HTTP 200 + look for a version line" check; `pnpm run verify:test`'s script text is
+> unchanged, only what it does under the hood.
+>
+> ### Settings-key rename: `webappTestUrl`/`webappProdUrl` → `testDeploymentId`/`prodDeploymentId`
+> Not carried forward as-is, and this is a deliberate improvement, not scope creep: §3.3's
+> whole point is "URL resolution derived from the live deployment list, never a stored
+> value that can go stale," and the package's `deploymentIdKey` mechanism needs a **bare
+> deployment ID** to plug into `execUrl()`, not a full `/exec` URL. `local.settings.json`'s
+> `webappTestUrl`/`webappProdUrl` (full URLs) were replaced with `testDeploymentId`/
+> `prodDeploymentId` (bare IDs, extracted from the same live values before renaming —
+> nothing was lost), which `deploy()` now auto-saves after every deploy via each target's
+> `deploymentIdKey`. `tools/call-webapp.js`'s `envMap` tries the live list first (via
+> `scriptIdKey`/`anchor`) and only falls back to the stored ID if that fails — confirmed
+> live: `sit` resolved correctly to the TEST deployment via `getAuthInfo` (see below).
+> `local.settings.json.example`, the real (gitignored) `local.settings.json`, and
+> `docs/OPERATIONS.md` §Local files / §Initial provisioning step 6–7 all updated together.
+> Also added `claspAuth` (was previously only set via `.envrc`'s `clasp_config_auth`, which
+> the package's `claspEnv()` does **not** read — see the `.envrc` doc fix below) —
+> `~/.clasprc-sdonaldson.json`, the same account as GActionSheet, confirmed empirically via
+> a live `getAuthInfo` admin call (`effectiveUser: sdonaldson@northlakeuu.org`).
+>
+> ### `tools/call-webapp.js` — now ~35 lines, wraps `gas-deploy/bin/call-webapp.js`
+> `envMap: { test, prod }` each with `scriptIdKey`, `anchor`, `deploymentIdKey`,
+> `secretKey: 'adminSecret'`; `authField: 'adminSecret'`; `ungatedActions:
+> ['bootstrapSecret']`; `securedCmds: ['admin']` — the last one matters because it's what
+> keeps `cmd=version` from ever carrying a secret (only `cmd=admin` is gated), matching
+> §3.2's "no secret required" contract. The old hand-rolled `parseArgs`/`buildPayload`/
+> `post`/`get`/`collectBody` (~140 lines) are gone; `--cmd`/`--env`/`--body` and the
+> `sit`↔`test` synonym are all the package's `bin/call-webapp.js` now. Verified live:
+> `node tools/call-webapp.js version --cmd version --env test` (no secret in the request)
+> and `node tools/call-webapp.js getAuthInfo --env sit` (secret injected, `sit` resolved to
+> TEST, `scopes` still carries `script.external_request` — confirms the sensitive-scope
+> gotcha from the persistent memory is unaffected by this stage). `tools/call-admin.js`
+> (the deprecated `require('./call-webapp')` shim) needed no change.
+>
+> ### `cmd=version` route — `src/WebApp.js`, same pattern as GActionSheet/F3Go30/RCV
+> `_handleVersionRequest()` + `_extractDeploymentId()`, routed in **both** `doGet` and
+> `doPost` ahead of every other `cmd` — including `cmd=admin`, deliberately, per §3.2.
+> Reads `BUILD_INFO.version`/`buildDate`/`target` directly (server-side scope,
+> `src/Version.js`) and derives `deploymentId` from `ScriptApp.getService().getUrl()` via
+> the same `/macros/s/([^/]+)/(?:exec|dev)/` regex F3Go30/GActionSheet use. `src/Version.js`
+> gained a `target` key (`buildInfoStamper` always writes one) and its `version` field is
+> now **bare semver** (`"0.0.0.1"`, no leading `v`, no `(Rev. …)`/`(TEST)` display
+> suffix) — a deliberate simplification, same choice GActionSheet's Stage 3 made and
+> explicitly opposite to PracticeMix's Stage 5a (which preserved its exact display string
+> because it had a UI reader). NUUC-Dispatch's only reader of `BUILD_INFO.version` is
+> `doGet`'s plain-text banner, which now composes its own display
+> (`'NUUC-Dispatch v' + BUILD_INFO.version + ' (' + BUILD_INFO.target + ')'`) — nothing
+> downstream (no client-side JS, no other project) parses the old elaborate string, so
+> this cost nothing. `test/gas-harness.js` gained a `ScriptApp.getService().getUrl()` stub
+> (previously `ScriptApp: {}`, unused) reading a settable `sandbox.__webAppUrl`; new
+> `test/webapp-version.test.js` covers both routes, no-secret-required, deployment-ID
+> extraction, and empty-URL fallback (4 tests, all passing in the `node --test` sandbox —
+> no network, no live call).
+>
+> ### Verified live against TEST, twice, real deploys (2026-08-22)
+> `pnpm run deploy:test`: v0.0.0.1 (build 0→1, deployment
+> `AKfycbwmoOPRDThQWDzMPU5H…` `@9→@10`) then v0.0.0.2 (build 1→2, `@10→@11`). Both printed
+> `✅ TEST verified — serving vX.Y.Z.B (target TEST)` and the summary's version row matched.
+> **The second run's first poll actually saw the previous version** (`got version=0.0.0.1
+> target=TEST` before succeeding on the second attempt) — a real, observed
+> edge-propagation retry, not just the injected-fake unit-test path Stage 1c relied on.
+> `node tools/call-webapp.js version --cmd version --env test` confirmed the route
+> separately, live, with no secret in the request.
+>
+> Forced version-mismatch and wrong-target checks were verified by calling the exported
+> `assertDeployedVersion` directly against the real live TEST deployment (same method
+> Stage 1c/5a used — inducing an actual failed `pnpm run deploy:test` would need a
+> test-only seam in `deploy()` that doesn't exist by design). Both ran live: expected
+> `9.9.9.9`/`TEST` timed out with `last seen version=0.0.0.1 target=TEST`; expected
+> `0.0.0.1`/`PRODUCTION` (correct version, wrong target) timed out with `last seen
+> version=0.0.0.1 target=TEST` — the target check fires independently of the version
+> check, exactly as required.
+>
+> `pnpm test`: all 25 tests pass (21 pre-existing + 4 new `cmd=version` tests), tier 2,
+> `node --test`, no network.
+>
+> ### Latent bug found and fixed: `tools/commit-deploy-stamp.js`
+> Not called by any AC (it only runs from `release:*` after a PROD deploy, out of scope
+> here), but it read `.deploy-metadata.json`'s old shape
+> (`{deploymentId, version, description, target}`, regex-parsing a version and a
+> `Rev. …` date out of `description`). The package's `.deploy-metadata.json` has no
+> `description` field at all (`{at, target, version, deploymentId, revision, scriptId}`) —
+> this would have thrown on the very next `release:patch`. Fixed to read the new field
+> names directly (`version`, `revision`, `at`) — same fix shape PracticeMix's Stage 5a
+> made for its own `commit-deploy-stamp.js`, but that project's had already been updated
+> in a prior session; NUUC-Dispatch's had not, and nothing in this stage's own work items
+> would have caught it without deliberately reading the file. Not exercised end-to-end
+> (would require a real PROD deploy + git commit) — code-reviewed against the new
+> `.deploy-metadata.json` shape actually written by the live TEST deploys above.
+>
+> ### `deployment-ledger/*.jsonl` — schema switched cleanly, zero readers
+> Like PracticeMix, this project's ledger predates the package but has **no** downstream
+> reader (`commit-deploy-stamp.js` reads `.deploy-metadata.json`, not the ledger) — so no
+> `ledgerEntry`/`deployMetadata` override was needed, same "safe because nothing reads it"
+> reasoning as PracticeMix's notes. `deployment-ledger/test.jsonl` (git-tracked, not
+> gitignored — confirmed via `git status`) now has two new lines in the package's default
+> shape sitting after the old-shape lines from before this stage; both live deploys above
+> wrote to it correctly.
+>
+> ### `docs/OPERATIONS.md` updated in the same commit
+> §Deployment gained a "Deploy verification (`cmd=version`)" subsection and a "Build
+> counter" subsection; the command table's "Verify TEST health" row is now framed as
+> "what is deployed on TEST right now? (read-only)" with a PROD-summary row added.
+> §Development Environment's `.envrc` table now explains that `clasp_config_auth` is for
+> **manual** `clasp` calls only — the deploy tooling reads `claspAuth` out of
+> `local.settings.json` instead (this was previously undocumented and, before this stage,
+> `local.settings.json` had no `claspAuth` key at all — deploys worked only because
+> `.envrc`'s env var happened to be exported in every interactive shell; a non-interactive
+> `direnv exec` invocation without `.envrc` sourced would have silently fallen back to
+> `~/.clasprc.json`, same class of bug as finding #1). §Configuration §Local files and
+> §Initial provisioning steps 6–7 updated for the `claspAuth`/`testDeploymentId`/
+> `prodDeploymentId` key rename.
+>
+> ### What Stage 5c should know
+> NUUC-Dispatch's conversion needed **no** package changes (unlike PracticeMix's Stage 5a,
+> which needed the opt-in `postFn` for its `ANYONE`-not-`ANYONE_ANONYMOUS` deployment) —
+> it's `ANYONE_ANONYMOUS`/`USER_DEPLOYING` like F3Go30/RCV/GActionSheet, so the bare
+> `lib/webapp.js` HTTPS client works unmodified. All five projects are now converted; 5c's
+> template retirement can treat the lineage-A shape (this project + GActionSheet) and the
+> lineage-B shape (F3Go30/RCV) as both fully proven, and PracticeMix's `postFn` escape
+> hatch as the one documented deviation a future sixth project might need. The
+> settings-key rename here (`webappTestUrl`/`webappProdUrl` → a bare-ID
+> `deploymentIdKey`) is a pattern 5c's README rewrite should call out explicitly for new
+> projects: **store a deployment ID, never a full URL**, in whatever key backs
+> `deploymentIdKey`.
 
 ---
 
