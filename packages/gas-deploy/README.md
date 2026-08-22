@@ -83,7 +83,7 @@ Per target: `scriptIdKey`, `label`, `emoji`, `counter` (`build` | `version`), `d
 `claspAuth`, so a target only sets it when it deviates) — RankChoiceVoting deploys its NUUC environment under
 a completely separate Google account.
 
-##  config
+## CLI config
 
 | key | meaning |
 |---|---|

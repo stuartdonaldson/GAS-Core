@@ -1,51 +1,62 @@
-# Best Practice: GAS Configuration Management and Deployment
+# Best Practice: GAS Configuration Management and Release Workflow
 
 ## Overview
 
-This pattern provides a complete configuration management and release workflow for Google Apps Script web apps. It combines three complementary capabilities:
+This pattern is the release-governance layer on top of [`gas-deployment/`](../gas-deployment/README.md)
+— **read that first**, install the `gas-deploy` package, and get `pnpm run deploy:test`/`deploy:prod`
+working before adopting anything here. This folder does not duplicate deploy mechanics (push,
+stamping, redeploy, verification): the `gas-deploy` package's `deploy()` already stamps the build
+identity into your app as one of its pipeline steps. What this pattern adds is what happens
+*around* a deploy — semantic version governance, a single release command, and git history that
+records exactly what shipped.
 
-1. **Semantic versioning** via `npm version` — version bumps create git commits and `vX.Y.Z` tags atomically
-2. **Deployment stamping** via `update-revision.js` — version and deployment date are stamped into the running app so users can see exactly which build is live
-3. **Post-release version bump** — after each production release the version is immediately advanced so test builds always show a version number ahead of the last release, making it unambiguous which environment you are looking at
+It combines three complementary capabilities:
+
+1. **Semantic versioning** via `pnpm version` — version bumps create git commits and `vX.Y.Z` tags
+   atomically.
+2. **A single release command** (`pnpm run release:patch`) that chains version bump → deploy →
+   deploy-stamp commit → tag push → post-release version bump.
+3. **Post-release version bump** — after each production release the version is immediately
+   advanced so test builds always show a version number ahead of the last release, making it
+   unambiguous which environment you are looking at.
 
 **Use when:**
-- Your app should display its version and deployment date to users or operators
-- You want a single command (`npm run release:patch`) to handle the full release cycle
-- You want git tags on every production release
-- You want test and prod builds to be visually distinguishable without checking git
+- You want a single command to handle the full release cycle: bump, deploy, tag, commit.
+- You want git tags on every production release.
+- You want test and prod builds to be visually distinguishable without checking git.
 
-**Relationship to gas-deployment:** This pattern builds on the stable TEST/PROD deployment architecture described in [`gas-deployment/`](../gas-deployment/). Read that first if the clasp deployment model is new to you. This pattern adds version governance and release scripting on top of it.
-
-**Provenance:** Extracted from [AudioTrackCombiner](../../../../c-dev/AudioTrackCombiner) v1.6+. Reference files: `manage-deployments.js`, `update-revision.js`, `package.json`, `adr/0003-version-management-and-release-workflow.md`.
+**Provenance:** Originated in AudioTrackCombiner v1.6+ as a hand-rolled `npm version` +
+`update-revision.js` + `commit-deploy-stamp.js` chain. The stamping half of that chain is now the
+`gas-deploy` package's job (RECOMMENDATION.md #4/#5) — this folder keeps only what remains
+genuinely project-side: the release script chain and the deploy-stamp commit.
 
 ---
 
 ## How It Works
 
 ```
-npm version patch              →  bumps package.json to 1.6.2
+pnpm version patch             →  bumps package.json to 1.6.2
                                    commits "1.6.2"
                                    creates tag v1.6.2
 
-npm run deploy:prod            →  update-revision.js reads "1.6.2" from package.json
-                                   stamps "v1.6.2 (Rev. May 6, 2026 14:30)" into src/version.html
-                                   clasp push -f  →  sends src/ to Apps Script
-                                   clasp deploy -i <PROD_ID> -d "PROD-WEB-APP v1.6.2 (Rev. May 6, 2026 14:30)"
-                                     → creates version N, repoints URL
-                                   writes .deploy-metadata.json (deployment ID, revision, description)
+pnpm run deploy:prod           →  gas-deploy's deploy() stamps "1.6.2" from package.json into
+                                   your version file, runs clasp push -f, redeploys PROD-WEB-APP,
+                                   verifies the /exec URL is actually serving v1.6.2 (§3.2), prints
+                                   the standard summary, and writes .deploy-metadata.json
+                                   ({ at, target, version, deploymentId, revision, scriptId })
 
 node commit-deploy-stamp.js    →  reads .deploy-metadata.json
-                                   git add src/version.html
+                                   git add <your stamped version file>
                                    git commit -m "chore: deploy stamp
-                                     Deployed v1.6.2 to PRODUCTION
+                                     Deployed v1.6.2 to PROD
                                      Deployment ID: AKfycb...
                                      Deployment revision: @165
-                                     Timestamp: May 6, 2026 14:30"
+                                     Timestamp: 2026-05-06T14:30:00.000Z"
                                    deletes .deploy-metadata.json
 
 git push --follow-tags         →  pushes v1.6.2 commit + tag + deploy stamp commit
 
-npm version patch              →  bumps to 1.6.3 (post-release dev version)
+pnpm version patch             →  bumps to 1.6.3 (post-release dev version)
 git push                       →  pushes 1.6.3 commit
 ```
 
@@ -55,92 +66,94 @@ The `release:patch` script chains all of the above into a single command.
 
 ---
 
-## npm Scripts
+## pnpm Scripts
 
-Add to `package.json`:
+Copy the scripts block from [`package.json.example`](package.json.example) into your
+`package.json`. It assumes `tools/manage-deployments.js` is already configured per
+[`gas-deployment/`](../gas-deployment/README.md#adopting-the-package-in-a-new-project):
 
 ```json
 "scripts": {
-  "update-revision":   "node update-revision.js",
-  "deploy:test":       "npm run update-revision && node manage-deployments.js --deploy-test",
-  "deploy:prod":       "npm run update-revision && node manage-deployments.js --deploy-prod",
-  "release:patch":     "npm version patch && npm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && npm version patch && git push",
-  "release:minor":     "npm version minor && npm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && npm version patch && git push",
-  "release:major":     "npm version major && npm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && npm version patch && git push",
-  "manage-deployments":"node manage-deployments.js"
+  "deploy:test":        "node tools/manage-deployments.js --deploy-test",
+  "deploy:prod":        "node tools/manage-deployments.js --deploy-prod",
+  "release:patch":      "pnpm version patch && pnpm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && pnpm version patch && git push",
+  "release:minor":      "pnpm version minor && pnpm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && pnpm version patch && git push",
+  "release:major":      "pnpm version major && pnpm run deploy:prod && node commit-deploy-stamp.js && git push --follow-tags && pnpm version patch && git push",
+  "manage-deployments": "node tools/manage-deployments.js"
 }
 ```
 
 | Script | When to use |
 |--------|-------------|
-| `npm run deploy:test` | Push a change to the test URL for validation |
-| `npm run deploy:prod` | Push to prod without a version bump (config-only changes) |
-| `npm run release:patch` | Ship a bug fix — bump patch, deploy, tag, post-release bump |
-| `npm run release:minor` | Ship a new feature — bump minor, deploy, tag, post-release bump |
-| `npm run manage-deployments` | Interactive: list, archive, or manually deploy |
+| `pnpm run deploy:test` | Push a change to the test URL for validation |
+| `pnpm run deploy:prod` | Push to prod without a version bump (config-only changes) |
+| `pnpm run release:patch` | Ship a bug fix — bump patch, deploy, tag, deploy-stamp commit, post-release bump |
+| `pnpm run release:minor` | Ship a new feature — bump minor, deploy, tag, deploy-stamp commit, post-release bump |
+| `pnpm run manage-deployments` | Interactive: list, archive, or manually deploy (see `gas-deployment/`) |
 
----
-
-## Deployment Description Format
-
-Each deploy sets the GAS deployment description to:
-```
-PROD-WEB-APP v1.6.2 (Rev. May 6, 2026 14:30)
-```
-
-The anchor (`PROD-WEB-APP` or `TEST-WEB-APP`) is always the **prefix** and is matched as a **substring**, so the deployment is discoverable even as the version and timestamp change. Do not create deployments with descriptions that omit the anchor prefix.
-
-This makes the deployment list self-auditing — you can see at a glance which version is deployed where without consulting git.
+No `update-revision` step anywhere in this chain — `gas-deploy`'s `deploy()` stamps the version as
+part of its own pipeline, so there is no separate step to remember or to skip by accident.
 
 ---
 
 ## Deploy Stamp Commit
 
-`commit-deploy-stamp.js` replaces the old inline `git commit -m 'chore: deploy stamp'`. It reads `.deploy-metadata.json` (written by `manage-deployments.js` after each successful deploy) and produces:
+`commit-deploy-stamp.js` reads `.deploy-metadata.json` — written by `gas-deploy`'s `deploy()`
+after every successful deploy, in the package's own shape:
+
+```jsonc
+{ "at": "2026-05-06T14:30:00.000Z", "target": "PROD", "version": "1.6.2",
+  "deploymentId": "AKfycbwPcnwln3A1KI0V9T9FWLxA-s5FLDQY9xmr9CXc_HPA_8oS9lXvXrhRnEmlCU0PB0QK",
+  "revision": "165", "scriptId": "1a2b3c…" }
+```
+
+and produces:
 
 ```
 chore: deploy stamp
 
-Deployed v1.6.2 to PRODUCTION
+Deployed v1.6.2 to PROD
 Deployment ID: AKfycbwPcnwln3A1KI0V9T9FWLxA-s5FLDQY9xmr9CXc_HPA_8oS9lXvXrhRnEmlCU0PB0QK
 Deployment revision: @165
-Timestamp: May 6, 2026 14:30
+Timestamp: 2026-05-06T14:30:00.000Z
 ```
 
-**Why include this in the commit?** GAS deployment IDs are immutable and stable. Recording the ID in git means you can map any commit to its live deployment URL without running `clasp deployments`. The revision (`@165`) confirms the GAS version number that served this code. `.deploy-metadata.json` is gitignored and deleted after the commit.
+**Why include this in the commit?** GAS deployment IDs are immutable and stable. Recording the ID
+in git means you can map any commit to its live deployment URL without running
+`clasp deployments`. The revision (`@165`) confirms the GAS version number that served this code.
 
----
+`commit-deploy-stamp.js` takes your stamped version file's path as an optional argument (default
+`src/version.html`) — pass your project's actual path if it's a `.js` const-stamped file instead:
 
-## Why `deploy:*` Not Raw `clasp`
+```bash
+node commit-deploy-stamp.js script/version.js
+```
 
-`deploy:test` and `deploy:prod` chain `update-revision` before calling `manage-deployments.js`. Calling `manage-deployments.js` directly (or using raw `clasp`) skips `update-revision`, so the running app shows a stale version string. The script emits a warning if called outside npm to catch this mistake.
+`.deploy-metadata.json` is gitignored and deleted by `commit-deploy-stamp.js` after the commit. If
+your project has more than one reader of this file, `gas-deploy`'s `deployMetadata` config hook
+lets you shape the record yourself — see `gas-deployment/`'s config reference cross-link.
 
 ---
 
 ## Version Display in the App
 
-`update-revision.js` reads the version from `package.json` and stamps it plus the current date/time into `src/version.html`:
-
-```html
-<script>
-  const APP_INFO = {
-    version: "v1.6.2 (Rev. May 6, 2026 14:30)",
-    buildDate: "2026-05-06T14:30:00.000Z"
-  };
-</script>
-```
-
-Your app can then display `APP_INFO.version` to give users and developers a precise build reference. This is the primary mechanism for distinguishing prod from test and for confirming that a deployment went live.
+Your stamper (`constStamper` or `buildInfoStamper`, configured in `tools/manage-deployments.js`
+per `gas-deployment/`) already writes the version into your app on every deploy — this pattern
+adds nothing new there. `package.json`'s `version` (plus an optional `build` counter) is the sole
+source of truth; the stamped file is generated output, never read back.
 
 ---
 
 ## Test vs Prod Distinction
 
 After each `release:*` command:
-- **PROD** deployment: shows `v1.6.2`
-- **TEST** deployment (after next `deploy:test`): shows `v1.6.3`
+- **PROD** deployment shows `v1.6.2`.
+- **TEST** deployment (after the next `deploy:test`) shows `v1.6.3`.
 
-This is the Maven-style post-release bump convention. The alternative (npm convention) is to stay on `v1.6.2` after release and rely on git tags as the boundary. The Maven approach was chosen here because the app displays its version — having test show a higher number than prod makes the distinction immediately visible without consulting git. See [AudioTrackCombiner ADR-0003](../../../../c-dev/AudioTrackCombiner/adr/0003-version-management-and-release-workflow.md) for the full trade-off analysis.
+This is the Maven-style post-release bump convention. The alternative (npm convention) is to stay
+on `v1.6.2` after release and rely on git tags as the boundary. The Maven approach was chosen here
+because the app displays its version — having test show a higher number than prod makes the
+distinction immediately visible without consulting git.
 
 ---
 
@@ -152,27 +165,28 @@ This is the Maven-style post-release bump convention. The alternative (npm conve
 # Ensure working tree is clean first
 git status
 
-npm run release:patch
+pnpm run release:patch
 ```
 
-This runs: `npm version patch` → `deploy:prod` → commit deploy stamp → `git push --follow-tags` → `npm version patch` (post-release bump) → `git push`.
+This runs: `pnpm version patch` → `deploy:prod` → commit deploy stamp → `git push --follow-tags` →
+`pnpm version patch` (post-release bump) → `git push`.
 
 ### Standard release (new feature)
 
 ```bash
-npm run release:minor
+pnpm run release:minor
 ```
 
 ### Deploy to test only (no release)
 
 ```bash
-npm run deploy:test
+pnpm run deploy:test
 ```
 
-### Deploy to prod without version bump (config/content only)
+### Deploy to prod without a version bump (config/content only)
 
 ```bash
-npm run deploy:prod
+pnpm run deploy:prod
 ```
 
 ---
@@ -181,48 +195,53 @@ npm run deploy:prod
 
 | Requirement | Notes |
 |---|---|
-| **Node.js v18+** | Required by tooling |
-| **clasp** | `npm install -g @google/clasp`; must be authenticated (`clasp login`) |
-| **@inquirer/prompts** | `npm install @inquirer/prompts` |
-| **Clean working tree** | `npm version` fails if there are uncommitted changes |
-| **Remote configured** | `git push` in the release scripts requires a configured remote |
-| **TEST-WEB-APP / PROD-WEB-APP deployments** | Created once manually in the Apps Script editor (see [gas-deployment/](../gas-deployment/)) |
+| Everything in [`gas-deployment/`](../gas-deployment/README.md#1-prerequisites) | This pattern assumes a working `deploy:test`/`deploy:prod` first. |
+| **pnpm** | `pnpm version` replaces `npm version` throughout — see `gas-deployment/`'s pnpm note. Both behave identically for a bare patch/minor/major bump; the difference is npm-lifecycle-script hooks (`pre/postversion`), which this pattern doesn't use. |
+| **Clean working tree** | `pnpm version` fails if there are uncommitted changes. |
+| **Remote configured** | `git push` in the release scripts requires a configured remote. |
 
 ### `clasp run` requires a linked GCP project
 
-`clasp run <functionName>` (used for scripted PropertiesService setup and test invocation) has additional prerequisites beyond `clasp push` and `clasp deploy`:
+`clasp run <functionName>` (used for scripted PropertiesService setup and test invocation) has
+additional prerequisites beyond `clasp push` and `clasp deploy`:
 
-1. **Linked GCP project** — the Apps Script project must be explicitly associated with a Google Cloud Platform project. In the Apps Script editor: *Project Settings > Google Cloud Platform (GCP) Project > Change project*. The default internal GCP project created by Apps Script does not expose the Apps Script API.
-2. **Apps Script API enabled** — in the linked GCP project, enable the *Apps Script API* at APIs & Services > Enabled APIs.
-3. **OAuth consent screen** — the GCP project must have an OAuth consent screen configured. For *External* user type, Google review may be required before the consent screen is usable by non-owner accounts.
-4. **API executable deployment** — the script must have at least one deployment of type *API executable* (created in the Apps Script editor: *Deploy > New deployment > API executable*). The `@HEAD` deployment created by `clasp push` is not an API executable and will not satisfy `clasp run`.
+1. **Linked GCP project** — the Apps Script project must be explicitly associated with a Google
+   Cloud Platform project. In the Apps Script editor: *Project Settings > Google Cloud Platform
+   (GCP) Project > Change project*. The default internal GCP project created by Apps Script does
+   not expose the Apps Script API.
+2. **Apps Script API enabled** — in the linked GCP project, enable the *Apps Script API* at
+   APIs & Services > Enabled APIs.
+3. **OAuth consent screen** — the GCP project must have an OAuth consent screen configured. For
+   *External* user type, Google review may be required before the consent screen is usable by
+   non-owner accounts.
+4. **API executable deployment** — the script must have at least one deployment of type
+   *API executable* (created in the Apps Script editor: *Deploy > New deployment > API
+   executable*). The `@HEAD` deployment created by `clasp push` is not an API executable and will
+   not satisfy `clasp run`.
 
-**Practical consequence:** `clasp run` is a significant setup investment for projects that do not already have a GCP project. For bound scripts on personal Google accounts, manually running test functions from the Apps Script editor (or via the menu) is often lower friction. Reserve `clasp run` for projects where scripted invocation is worth the one-time GCP setup cost.
+**Practical consequence:** `clasp run` is a significant setup investment for projects that do not
+already have a GCP project. For bound scripts on personal Google accounts, manually running test
+functions from the Apps Script editor (or via the menu) is often lower friction. Reserve
+`clasp run` for projects where scripted invocation is worth the one-time GCP setup cost.
 
 ---
 
 ## Setup
 
-### 1. Copy scripts
+### 1. Get `gas-deployment/` working first
 
-Copy `manage-deployments.js` and `update-revision.js` from this folder into your project root.
+Follow [`gas-deployment/`'s adoption steps](../gas-deployment/README.md#adopting-the-package-in-a-new-project)
+end to end: install the `gas-deploy` package, configure `tools/manage-deployments.js`, confirm
+`pnpm run deploy:test` succeeds and prints the standard summary with a verified version.
 
-### 2. Add npm scripts
+### 2. Copy `commit-deploy-stamp.js`
 
-Copy the scripts block from `package.json.example` into your `package.json`.
+Copy [`commit-deploy-stamp.js`](commit-deploy-stamp.js) into your project root.
 
-### 3. Create version file
+### 3. Add pnpm scripts
 
-Add `src/version.html` with the token format `update-revision.js` expects:
-
-```html
-<script>
-  const APP_INFO = {
-    version: "v0.0.0 (Rev. Jan 1, 2026 00:00)",
-    buildDate: "2026-01-01T00:00:00.000Z"
-  };
-</script>
-```
+Copy the scripts block from [`package.json.example`](package.json.example) into your
+`package.json`.
 
 ### 4. Initialize version
 
@@ -232,30 +251,19 @@ Set your starting version in `package.json`:
 "version": "1.0.0"
 ```
 
-### 5. Configure `manage-deployments.js`
+### 5. Gitignore the ephemeral metadata file
 
-`SRC_DIR` defaults to `./src`. If your Apps Script source is in a different folder, update the constant at the top of the file.
-
----
-
-## Adapting Target Names
-
-If you want different deployment anchor names than `TEST-WEB-APP` / `PROD-WEB-APP`, update the `TARGETS` constant:
-
-```js
-const TARGETS = {
-  test:       { anchor: 'MY-TEST',  label: 'TEST',       emoji: '🧪' },
-  production: { anchor: 'MY-PROD',  label: 'PRODUCTION', emoji: '🚀' },
-};
 ```
-
-Then create deployments in the Apps Script editor with descriptions containing those anchor strings as a prefix. The script matches by substring, so deployed descriptions like `MY-PROD v1.2.3 (Rev. ...)` will still be found.
+.deploy-metadata.json
+```
 
 ---
 
 ## Mid-Release Failure Recovery
 
-If a `release:*` script fails mid-chain (e.g. a clasp error during deploy), the version may already be bumped and tagged. To diagnose:
+If a `release:*` script fails mid-chain (e.g. a clasp error during deploy, or `assertDeployedVersion`
+failing verification — see `gas-deployment/`'s §Deploy verification), the version may already be
+bumped and tagged. To diagnose:
 
 ```bash
 git log --oneline -5
@@ -263,8 +271,8 @@ git tag -l | tail -5
 ```
 
 Then either:
-- **Complete manually**: finish the remaining steps (deploy, push, post-release bump)
-- **Revert the version commit**: `git tag -d vX.Y.Z && git reset --hard HEAD~1`
+- **Complete manually**: finish the remaining steps (deploy, push, post-release bump).
+- **Revert the version commit**: `git tag -d vX.Y.Z && git reset --hard HEAD~1`.
 
 ---
 
@@ -272,9 +280,8 @@ Then either:
 
 | File | Purpose |
 |---|---|
-| `manage-deployments.js` | Deployment manager — no internal `update-revision` call; warns if called without npm; writes `.deploy-metadata.json` after each deploy |
-| `update-revision.js` | Reads version from `package.json` dynamically; stamps version + date into `src/version.html` |
-| `commit-deploy-stamp.js` | Reads `.deploy-metadata.json` and commits `src/version.html` with deployment ID, revision, and timestamp in the message |
-| `package.json.example` | Example scripts block showing the full deployment and release setup |
+| `commit-deploy-stamp.js` | Reads `.deploy-metadata.json` (the `gas-deploy` package's own shape) and commits the stamped version file with deployment ID, revision, and timestamp in the message |
+| `package.json.example` | Example scripts block: pnpm version governance + the `gas-deploy`-backed deploy scripts |
 
-Add `.deploy-metadata.json` to your `.gitignore` — it is ephemeral and deleted by `commit-deploy-stamp.js` after each release.
+Deploy mechanics — `manage-deployments.js`, the stamper, the resolver, deploy verification — live
+in [`gas-deployment/`](../gas-deployment/README.md); nothing in this folder duplicates them.

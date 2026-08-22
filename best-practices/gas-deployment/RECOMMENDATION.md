@@ -1,6 +1,6 @@
 # Recommendation — consolidate `manage-deployments.js` into a shared package
 
-**Status:** proposed, not started
+**Status:** complete (2026-08-22, Stage 5c)
 **Author:** review of 2026-08-21
 **Scope:** 7 copies of `manage-deployments.js` across F3Go30, RankChoiceVoting, GActionSheet,
 PracticeMix, NUUC-Dispatch, and two `best-practices/` templates.
@@ -1683,28 +1683,28 @@ Notable: already pnpm; already regenerates `.clasp.json` from `local.settings.js
 `best-practices/gas-cm-and-deployment/manage-deployments.js` are the two copies that will
 otherwise seed the next project with all of §1's drift.
 
-- [ ] Both template `manage-deployments.js` files deleted (and `gas-deployment/update-revision.js`
+- [x] Both template `manage-deployments.js` files deleted (and `gas-deployment/update-revision.js`
       if PracticeMix's fold-in made it obsolete).
-- [ ] `gas-deployment/README.md` rewritten to: install the package, pick a resolver, pick a
+- [x] `gas-deployment/README.md` rewritten to: install the package, pick a resolver, pick a
       stamper, declare targets and hooks — with a complete worked `runCli` config for each
       lineage. §Deployment Models (single-project vs. two-projects-per-env, and the bound-container
       driver) is preserved; it is the genuinely durable content in that README.
-- [ ] `gas-cm-and-deployment/README.md` keeps only the release/CM workflow (npm→pnpm version, git
+- [x] `gas-cm-and-deployment/README.md` keeps only the release/CM workflow (npm→pnpm version, git
       tags, deploy stamp) and links to `gas-deployment/` for deployment mechanics.
-- [ ] `best-practices/README.md` index rows updated for both folders.
-- [ ] The "Generated `.clasp.json` from `local.settings.json`" entry under §Noted Patterns is
+- [x] `best-practices/README.md` index rows updated for both folders.
+- [x] The "Generated `.clasp.json` from `local.settings.json`" entry under §Noted Patterns is
       promoted into `gas-deployment/` — it is now package behaviour, present in all five projects.
-- [ ] `gas-deployment/README.md` documents **deploy verification (§3.2)** as a first-class pattern:
+- [x] `gas-deployment/README.md` documents **deploy verification (§3.2)** as a first-class pattern:
       the `cmd=version` contract, why `clasp deploy` exiting 0 proves nothing, and why this
       replaces end-to-end suites as the deploy gate. This is the most transferable practice in the
       whole exercise — it belongs in the README, not buried in this plan.
-- [ ] The webapp caller (§3.3) is documented — either folded into `gas-webapp-admin/README.md`
+- [x] The webapp caller (§3.3) is documented — either folded into `gas-webapp-admin/README.md`
       (which already covers the `cmd=admin` + CLI-caller pattern for F3Go30/NUUC-Dispatch) or
       given its own section here, cross-linked either way. Decide and record which.
-- [ ] `gas-webapp-admin/README.md` updated so it does not still present a hand-rolled per-project
+- [x] `gas-webapp-admin/README.md` updated so it does not still present a hand-rolled per-project
       caller as the recommended shape.
-- [ ] This RECOMMENDATION.md marked **Status: complete**, with all Handoff Notes filled.
-- [ ] A new GAS project can be stood up from `gas-deployment/README.md` alone, with no copying.
+- [x] This RECOMMENDATION.md marked **Status: complete**, with all Handoff Notes filled.
+- [x] A new GAS project can be stood up from `gas-deployment/README.md` alone, with no copying.
 
 **Handoff Notes — Stage 5b (NUUC-Dispatch)**
 > **Status: all 10 ACs done and verified live against the real TEST deployment
@@ -1858,6 +1858,97 @@ otherwise seed the next project with all of §1's drift.
 > `deploymentIdKey`) is a pattern 5c's README rewrite should call out explicitly for new
 > projects: **store a deployment ID, never a full URL**, in whatever key backs
 > `deploymentIdKey`.
+
+**Handoff Notes — Stage 5c (Retire the templates)**
+> **Status: all 10 ACs done (2026-08-22). Stage 5c is closed — this is the final stage.
+> RECOMMENDATION.md is now Status: complete.** This was a doc/cleanup stage with no deploy
+> targets; nothing in it touches SIT/TEST/PROD, so there is nothing to "verify live" the way
+> Stages 1–5b did. Verification here means: the deleted files are genuinely dead, the new/edited
+> docs are internally consistent and their code samples are syntactically real, and the package's
+> own test suite is unaffected.
+>
+> **Deleted, not just superseded:**
+> - `gas-deployment/manage-deployments.js`, `gas-deployment/update-revision.js` — the latter
+>   confirmed obsolete: it hardcoded `appVersion = 'v1.5'` and never even read `package.json`,
+>   and every current consumer's version stamping now runs inside `gas-deploy`'s `deploy()` via
+>   `config.stamper` (constStamper/buildInfoStamper), not a separate script.
+> - `gas-cm-and-deployment/manage-deployments.js`, `gas-cm-and-deployment/update-revision.js` —
+>   same reasoning applied a second time; this one wasn't named in the AC's parenthetical but the
+>   argument is identical, so it's called out explicitly here rather than left as a silent
+>   deviation. `gas-cm-and-deployment/README.md`'s new npm-scripts block has no
+>   `update-revision` step anywhere in the chain as a result — stamping cannot be skipped by
+>   calling the wrong script anymore, which was the entire failure mode `update-revision.js`'s
+>   "called without npm" warning used to guard against.
+> - `gas-webapp-admin/call-webapp.js` — not named in the original AC list either, but it could not
+>   be left in place: it read `webappTestUrl`/`webappProdUrl` (full URLs stored in
+>   `local.settings.json`), the exact stale-value anti-pattern §3.3 and Stage 5b's settings-key
+>   rename moved every real consumer away from. Leaving it as "the recommended shape" while
+>   `gas-deployment/README.md` recommends the opposite would have re-introduced finding-shaped
+>   drift on day one of a new project. `gas-webapp-admin/local.settings.example.json` was updated
+>   to the bare-ID `testDeploymentId`/`prodDeploymentId` shape to match.
+> - `gas-deployment/update-revision.js`'s deletion was pre-approved by the AC's own parenthetical;
+>   the other two were a judgment call, recorded here per the "don't silently deviate" instruction.
+>
+> **Decision recorded for the webapp-caller AC (§3.3 documentation, "decide and record which"):**
+> gave it its own section in `gas-deployment/README.md` (§The webapp caller), not folded into
+> `gas-webapp-admin/README.md`. Reasoning: the caller is now literally part of the `gas-deploy`
+> package (`bin/call-webapp.js`, same `local.settings.json` target keys as the deploy config,
+> same `deploymentIdKey`/`scriptIdKey` the deploy pipeline writes), so its adoption steps belong
+> next to the package's other adoption steps. `gas-webapp-admin/README.md` was updated to point
+> at that section rather than duplicate it — it now documents only what's still genuinely its own:
+> the GAS-side `cmd=admin` route and secret-bootstrap pattern (`Admin.js`).
+>
+> **Fixed a real bug while updating `gas-cm-and-deployment/commit-deploy-stamp.js`:** the old
+> version parsed `description` (`"PROD-WEB-APP v1.6.2 (Rev. May 6, 2026 14:30)"`) out of
+> `.deploy-metadata.json` with two regexes. The package's `.deploy-metadata.json` has no
+> `description` field at all — its shape is `{ at, target, version, deploymentId, revision,
+> scriptId }` (see `packages/gas-deploy/lib/ledger.js`). This is the same latent bug Stage 5b's
+> Handoff Notes found and fixed in NUUC-Dispatch's copy of this file; the template copy in this
+> folder had the identical bug and would have thrown on the very next `release:patch` run by
+> anyone who adopted it as-is. Fixed the same way: read `version`/`revision`/`at`/`target`
+> directly. Also parameterized the stamped-file path (`process.argv[2]`, default
+> `src/version.html`) since the template no longer assumes one specific version-file shape — the
+> package supports both `constStamper` (`.js`) and `buildInfoStamper` (`.js` or `.html`) targets,
+> and a copied `commit-deploy-stamp.js` needs to `git add` whichever one the adopting project
+> actually uses.
+>
+> **Verification performed (doc-only stage, so this is what "verified" means here):**
+> - `node --check` passed on `commit-deploy-stamp.js` and on all 4 JS fenced code blocks in the
+>   new `gas-deployment/README.md` (extracted and checked individually — both worked
+>   `runCli` configs, the `handleVersionRequest_` snippet, and the webapp-caller wrapper).
+> - `package.json.example` and `gas-webapp-admin/local.settings.example.json` both parse as valid
+>   JSON.
+> - `node --test 'test/*.test.js'` in `packages/gas-deploy/` still passes all 74 tests, unchanged
+>   — this stage touched no package code, only `best-practices/` docs and one heading typo fix
+>   (`packages/gas-deploy/README.md`'s `##  config` → `## CLI config`, a pre-existing double-space
+>   typo that made the section's anchor unlinkable; fixed because this stage's new cross-links
+>   depend on it resolving).
+> - Every `](...#fragment)` link added across `gas-deployment/README.md`,
+>   `gas-cm-and-deployment/README.md`, and `gas-webapp-admin/README.md` was checked against the
+>   actual heading text in its target file (GitHub's slugify rules: lowercase, spaces→hyphens).
+>   Two headings were deliberately kept ASCII-only ("The webapp caller", not "The webapp caller
+>   (§3.3)") specifically so their anchors would be unambiguous rather than relying on how a
+>   renderer handles `§`.
+> - `grep -rln` across `best-practices/**/*.md` for the four deleted files' paths and for
+>   `gas-webapp-admin/call-webapp.js` found no remaining references outside `RECOMMENDATION.md`
+>   itself (which correctly keeps them as history).
+> - Confirmed all `gas-deploy` exports referenced in the new docs are real: `require('./index.js')`
+>   inside `packages/gas-deploy/` resolves `runCli`/`buildInfoStamper`/`anchorMatch`/`constStamper`
+>   as functions, and `require('./bin/call-webapp.js')` resolves `run`.
+> - **Not done, and out of scope for this stage:** actually standing up a new, empty GAS project
+>   from `gas-deployment/README.md` against real Google infrastructure. §4's own conventions
+>   restrict live verification to deploy-shaped stages against SIT/TEST; this stage produces no
+>   deploy to verify. The AC "a new GAS project can be stood up from the README alone" is
+>   satisfied on the evidence above (both worked configs are trimmed, working excerpts of two
+>   *actual* live consumers' real config files — NUUC-Dispatch and F3Go30 — not invented, and the
+>   directory now contains nothing else to copy) rather than by a live rehearsal. If this needs
+>   stronger proof later, the next candidate sixth project is the way to get it.
+>
+> **What every future stage/reader should know:** this was the last stage in the plan. There is no
+> Stage 6. Any further work on `gas-deploy` (a sixth consumer, a new resolver/stamper shape, the
+> GActionSheet Python-caller contract test flagged as still-open in §3.3) is new work, not a
+> continuation of this recommendation — open a fresh issue/plan for it rather than reopening this
+> file's stages.
 
 ---
 

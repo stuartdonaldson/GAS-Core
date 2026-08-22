@@ -17,8 +17,16 @@ from deploy tooling rather than clicked through the editor UI.
 `handleAdminPost_`, `tools/callWebapp.js`); adopted and refined by
 [NUUC-Dispatch](../../../../proj/NUUC-Dispatch) (`src/Admin.js`, `tools/call-webapp.js`)
 — second use is what elevated it here. GActionSheet uses a sibling variant
-(`WEBAPP_SECRET` payload gate in `src/WebApp.js`). Files in this folder are copies of
-NUUC-Dispatch's implementation (the most current).
+(`WEBAPP_SECRET` payload gate in `src/WebApp.js`). `Admin.js` in this folder is a copy of
+NUUC-Dispatch's GAS-side implementation (the most current).
+
+> **The CLI caller shown below is no longer a per-project hand-roll.** The five projects that
+> originally each built one from scratch (`tools/callWebapp.js` / `tools/call-webapp.js` /
+> `scripts/call_webapp.py`) are now thin wrappers over the shared `gas-deploy` package's
+> `bin/call-webapp.js` — see [`gas-deployment/README.md` §The webapp
+> caller](../gas-deployment/README.md#the-webapp-caller) for the current, recommended shape and
+> a worked config. This folder no longer ships its own copy of the caller; only `Admin.js` (the
+> GAS-side route, which stays project-specific) lives here now.
 
 ---
 
@@ -38,11 +46,11 @@ editor UI, which:
 ## Architecture
 
 ```
-local.settings.json (gitignored)          tools/call-webapp.js
-├─ webappTestUrl   ──────────────────────►  resolves URL by --env test|sit|prod
-├─ webappProdUrl                            injects adminSecret into payload
-└─ adminSecret     ──────┐                  POSTs text/plain JSON, follows GAS 302
-                         │
+local.settings.json (gitignored)          tools/call-webapp.js (gas-deploy/bin/call-webapp.js)
+├─ testDeploymentId ──────────────────────►  resolves the /exec URL from the LIVE deployment
+├─ prodDeploymentId                          list by --env test|sit|prod (ID here is a fallback)
+└─ adminSecret     ──────┐                  injects adminSecret into payload for cmd=admin only
+                         │                  POSTs text/plain JSON, follows GAS 302
                          ▼
     POST {url}?cmd=admin  { action, adminSecret, ...body }
                          │
@@ -80,17 +88,26 @@ src/Admin.js  _handleAdminPost(e)          Script Properties
 | File | Role |
 |---|---|
 | `Admin.js` | GAS-side: `_handleAdminPost(e)` dispatcher + `_bootstrapAdminSecret`. Wire into `doPost`: `if (e.parameter.cmd === 'admin') return _handleAdminPost(e);` |
-| `call-webapp.js` | Local CLI: `node tools/call-webapp.js <action> [--cmd admin\|none] [--env test\|sit\|prod] [--body '{json}']`. `--cmd` defaults to `admin`; `--cmd none` posts to the bare `/exec` for non-admin routes. |
-| `local.settings.example.json` | Template for the gitignored `local.settings.json` |
+| `local.settings.example.json` | Template for the gitignored `local.settings.json` — note it stores bare deployment IDs (`testDeploymentId`/`prodDeploymentId`), never full `/exec` URLs; see the note below on why. |
+
+The CLI caller is **not** copied from this folder — see the note above. It is a ~15-line wrapper
+over `gas-deploy/bin/call-webapp.js`, configured with this project's `envMap`/`authField`/
+`securedCmds`; a complete worked example is in
+[`gas-deployment/README.md` §The webapp caller](../gas-deployment/README.md#the-webapp-caller).
 
 ---
 
 ## Setup
 
 1. Copy `Admin.js` into `src/`, add the `cmd=admin` branch to `doPost`, deploy.
-2. Copy `call-webapp.js` into `tools/`; add pnpm/npm scripts:
-   `"admin": "node tools/call-webapp.js"`.
-3. Create `local.settings.json` from the example; fill in the deployment `/exec` URLs.
+2. Add `tools/call-webapp.js` per the worked example linked above (`envMap` needs
+   `scriptIdKey`/`anchor`/`deploymentIdKey`/`secretKey` per target, `authField: 'adminSecret'`,
+   `securedCmds: ['admin']` — the last one is what keeps the secret out of any `cmd=version`
+   request); add a pnpm script: `"admin": "node tools/call-webapp.js"`.
+3. Create `local.settings.json` from `local.settings.example.json`; fill in `scriptId`. The
+   deployment IDs are populated automatically by `gas-deploy`'s `deploy()` after your first deploy
+   of each target (its `deploymentIdKey` mechanism) — you don't need to hand-copy them from
+   `clasp deployments`.
 4. Generate and bootstrap the secret:
    ```bash
    node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
