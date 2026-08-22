@@ -74,7 +74,7 @@ function resolveEnvDeploymentId(config, envKey, settings) {
   const target = config.envMap[envKey];
   if (config.resolveFromLiveList !== false && target.scriptIdKey && settings[target.scriptIdKey]) {
     try {
-      const env = claspEnv(settings, target.claspAuthKey);
+      const env = claspEnv(settings, target.authKey);
       const listOutput = execSync('clasp deployments', { cwd: config.root, env }).toString();
       return resolveDeploymentId(config.resolveDeployment || standardChain(target.anchor), {
         listOutput, settings, target, targetKey: envKey,
@@ -102,7 +102,14 @@ async function run(config, argv = process.argv) {
   const target = config.envMap[envKey];
 
   const deploymentId = resolveEnvDeploymentId(config, envKey, settings);
-  const secret = target.secretKey ? settings[target.secretKey] : undefined;
+
+  // `securedCmds` scopes the secret to the endpoints that actually gate on it. F3Go30 has
+  // several cmd endpoints (admin, signup, checkin) and only cmd=admin is secret-gated; sending
+  // the admin secret to an ungated endpoint would widen its exposure for no reason. Omit it and
+  // every cmd is treated as secret-carrying, which is the right default for a single-endpoint
+  // project like RankChoiceVoting.
+  const cmdIsSecured = !config.securedCmds || config.securedCmds.includes(cmd);
+  const secret = cmdIsSecured && target.secretKey ? settings[target.secretKey] : undefined;
 
   // stderr, so piping stdout to jq still works. Never includes the payload's secret.
   console.error(`→ ${envKey.toUpperCase()}  cmd=${cmd}  ${action}`);

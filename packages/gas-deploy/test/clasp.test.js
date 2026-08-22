@@ -11,7 +11,7 @@ test('claspEnv always sets clasp_config_auth — the #1 invariant', () => {
   assert.equal(env.PATH, '/usr/bin');
 });
 
-test('claspEnv resolves a PER-TARGET auth key — RCV deploys NUUC under another Google account', () => {
+test('claspEnv resolves a PER-TARGET authKey — RCV deploys NUUC under another Google account', () => {
   const settings = { claspAuth: '~/.clasprc-rcv.json', nuucAuth: '~/.clasprc-nuuc.json' };
   assert.match(claspEnv(settings, 'nuucAuth').clasp_config_auth, /clasprc-nuuc\.json$/);
   assert.match(claspEnv(settings, 'claspAuth').clasp_config_auth, /clasprc-rcv\.json$/);

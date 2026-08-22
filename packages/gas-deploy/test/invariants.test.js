@@ -20,7 +20,7 @@ function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !l.trim().startsWith('*') && !l.trim().startsWith('//')).join('\n');
 }
 
-test('#1: no clasp invocation anywhere without an env carrying clasp_config_auth', () => {
+test('#1: no clasp invocation anywhere without an env carrying clasp_config_auth', async () => {
   const { deploy } = require('../lib/cli.js');
   const calls = [];
   const fakeExec = (cmd, opts) => { calls.push({ cmd, opts }); return cmd.includes('deployments') ? '- AKfycA @5 - d' : 'Deployed @6.'; };
@@ -36,21 +36,21 @@ test('#1: no clasp invocation anywhere without an env carrying clasp_config_auth
       JSON.stringify({ testScriptId: 'S1', claspAuth: '/tmp/creds.json', testDeploymentId: 'AKfycA' }), 'utf8');
 
     const { constStamper } = require('../lib/stampers.js');
-    return deploy({
+    await deploy({
       root: dir,
       stamper: constStamper({ file: 'script/version.js' }),
       exec: fakeExec,
       log: () => {}, errorLog: () => {},
       verifyOptions: { postFn: async () => ({ ok: true, version: '1.0.0.1', target: 'TEST' }), sleep: async () => {} },
       targets: { test: { scriptIdKey: 'testScriptId', label: 'TEST', counter: 'build', deploymentIdKey: 'testDeploymentId', sheetIdKey: 'testSheetId' } },
-    }, 'test').then(() => {
-      const claspCalls = calls.filter(c => c.cmd.startsWith('clasp'));
-      assert.ok(claspCalls.length >= 3, 'push, deployments and deploy all ran');
-      for (const c of claspCalls) {
-        assert.ok(c.opts && c.opts.env && c.opts.env.clasp_config_auth,
-          `bare clasp invocation would fall back to ~/.clasprc.json: ${c.cmd}`);
-      }
-    });
+    }, 'test');
+
+    const claspCalls = calls.filter(c => c.cmd.startsWith('clasp'));
+    assert.ok(claspCalls.length >= 3, 'push, deployments and deploy all ran');
+    for (const c of claspCalls) {
+      assert.ok(c.opts && c.opts.env && c.opts.env.clasp_config_auth,
+        `bare clasp invocation would fall back to ~/.clasprc.json: ${c.cmd}`);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

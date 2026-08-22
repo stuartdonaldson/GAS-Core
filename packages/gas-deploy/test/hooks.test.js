@@ -67,3 +67,14 @@ test('summary reports the server-confirmed version it was handed', () => {
   const out = printDeploySummary({ label: 'TEST', version: '9.9.9', now: 'NOW', deploymentId: 'A', revision: '1', scriptId: 'S', sheetId: 'X', log: () => {} });
   assert.match(out, /Product version:\s+v9\.9\.9/);
 });
+
+test('prePush hooks default to required — nothing is live yet, so stopping is free', async () => {
+  // The mapping deploy() applies: an explicit required:false still wins.
+  const mapped = [{ name: 'gen' }, { name: 'opt', required: false }].map(h => ({ required: true, ...h }));
+  assert.equal(mapped[0].required, true);
+  assert.equal(mapped[1].required, false);
+  await assert.rejects(
+    () => runPostDeploy_([{ required: true, name: 'gen', run: async () => { throw new Error('codegen broke'); } }], {}, { log: () => {}, errorLog: () => {} }),
+    /Required post-deploy hook "gen" failed/
+  );
+});

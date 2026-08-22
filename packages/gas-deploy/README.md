@@ -31,13 +31,13 @@ const { runCli, constStamper, standardChain } = require('gas-deploy');
 
 runCli({
   root: path.join(__dirname, '..'),
-  claspRootDir: 'script',
+  rootDir: 'script',
   stamper: constStamper({ file: 'script/version.js' }),
   targets: {
     sit:  { scriptIdKey: 'sitScriptId',  label: 'SIT',  emoji: '🧪', counter: 'build',
-            deploymentIdKey: 'sitDeploymentId', sheetIdKey: 'sitSheetId', claspAuthKey: 'claspAuth' },
+            deploymentIdKey: 'sitDeploymentId', sheetIdKey: 'sitSheetId' },
     prod: { scriptIdKey: 'prodScriptId', label: 'PROD', emoji: '🚀', counter: 'version',
-            deploymentIdKey: 'prodDeploymentId', sheetIdKey: 'prodSheetId', claspAuthKey: 'claspAuth' },
+            deploymentIdKey: 'prodDeploymentId', sheetIdKey: 'prodSheetId' },
   },
   postDeploy: [
     { name: 'Stamp WEBAPP_URL', run: (ctx) => run('setWebappUrl', ctx) },
@@ -58,25 +58,47 @@ node tools/manage-deployments.js --deploy-prod --skip-bump
 |---|---|
 | `root` | Absolute project root. Everything else is relative to it. |
 | `settingsPath` / `pkgPath` / `claspPath` | Defaults: `local.settings.json`, `package.json`, `.clasp.json`. |
-| `claspRootDir` | `rootDir` written into `.clasp.json`. Default `script`. |
+| `rootDir` | `rootDir` written into `.clasp.json`. Default `script`. |
 | `stamper` | `constStamper({file})` or `buildInfoStamper({file})`. |
 | `targets` | Per-env config, see below. |
 | `envAliases` | Public env name → internal target key, e.g. `{ sit: 'test', prod: 'template' }`. |
 | `resolveDeployment` | Resolver chain. Default `standardChain(target.anchor)`. |
-| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. |
+| `prePush` | Ordered hooks that run after the stamp and **before** the push, for source that must be part of it. Default `required: true` — nothing is live yet, so stopping is free. |
+| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. |
 | `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. |
 | `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. |
-| `readLocalVersion` | `(ctx) => string` — lets `--summary` flag live-vs-local divergence. |
+| `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
 | `verifyOptions` | `{ intervalSec, timeoutSec }` for `assertDeployedVersion`. |
 
 Per target: `scriptIdKey`, `label`, `emoji`, `counter` (`build` | `version`), `deploymentIdKey`,
-`sheetIdKey`, `claspAuthKey`, `anchor`.
+`sheetIdKey`, `authKey`, `anchor`.
 
 `counter: 'build'` bumps package.json's integer `build` and stamps `${version}.${build}`;
 `counter: 'version'` bumps the semver patch and resets `build` to 0.
 
-`claspAuthKey` is **per target** on purpose — RankChoiceVoting deploys its NUUC environment under
+`authKey` is **per target** on purpose (it names a key in `local.settings.json`; it defaults to
+`claspAuth`, so a target only sets it when it deviates) — RankChoiceVoting deploys its NUUC environment under
 a completely separate Google account.
+
+##  config
+
+| key | meaning |
+|---|---|
+| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. |
+| `authField` | Body field the secret goes in: `adminSecret`, `testToken`, `secret`, … |
+| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
+| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
+| `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
+
+## `call-webapp` config
+
+| key | meaning |
+|---|---|
+| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. |
+| `authField` | Body field the secret goes in: `adminSecret`, `testToken`, `secret`, … |
+| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
+| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
+| `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
 
 ## Deployment-ID resolution
 

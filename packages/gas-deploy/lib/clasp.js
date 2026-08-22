@@ -23,12 +23,14 @@ function expandHome(p) {
 }
 
 /**
- * Resolves the credential file for a target. `claspAuthKey` is per-target on purpose: RCV
+ * Resolves the credential file for a target. `authKey` is per-target on purpose: RCV
  * deploys its NUUC environment under an entirely separate Google account (`nuucAuth`) from
  * SIT/PROD (`claspAuth`), so auth resolution can never be a single global.
  */
-function resolveClaspAuthPath(settings, claspAuthKey) {
-  const key = claspAuthKey || 'claspAuth';
+function resolveClaspAuthPath(settings, authKey) {
+  // The default settings key lives here, not in each consumer's config — a consumer only names
+  // an authKey when it deviates (RCV's NUUC target, which deploys under another Google account).
+  const key = authKey || 'claspAuth';
   const value = settings[key];
   if (!value) {
     throw new Error(`${key} is not set in local.settings.json — clasp would silently fall back to ~/.clasprc.json`);
@@ -37,8 +39,8 @@ function resolveClaspAuthPath(settings, claspAuthKey) {
 }
 
 /** The only supported way to build an environment for a clasp child process. */
-function claspEnv(settings, claspAuthKey, baseEnv = process.env) {
-  return { ...baseEnv, clasp_config_auth: resolveClaspAuthPath(settings, claspAuthKey) };
+function claspEnv(settings, authKey, baseEnv = process.env) {
+  return { ...baseEnv, clasp_config_auth: resolveClaspAuthPath(settings, authKey) };
 }
 
 /**

@@ -11,6 +11,7 @@
  *   1. resolve auth        — before anything shells out (#1)
  *   2. write .clasp.json   — points clasp at THIS target's script project
  *   3. bump + stamp        — package.json is authoritative; the version file is generated (#5)
+ *   3a. prePush hooks      — regenerate source that must be part of the push
  *   4. clasp push          — captured stdout, echoed, so the revision is parseable (#3)
  *   5. resolve deployment  — from the live list, via the configured resolver chain
  *   6. clasp deploy        — update the named deployment in place; never create one
@@ -97,7 +98,7 @@ function targetContext_(config, targetKey) {
     scriptId,
     pkgPath: path.join(root, config.pkgPath || 'package.json'),
     claspPath: path.join(root, config.claspPath || '.clasp.json'),
-    env: claspEnv(settings, target.claspAuthKey),
+    env: claspEnv(settings, target.authKey),
   };
 }
 
@@ -128,12 +129,23 @@ async function deploy(config, targetKey, options = {}) {
 
   log(`\n${target.emoji || '📦'}  Deploying to ${label} (${scriptId.slice(0, 12)}…)\n`);
 
-  writeClasp_(ctx.claspPath, scriptId, config.claspRootDir || 'script');
-  log(`✅ .clasp.json written (rootDir: ${config.claspRootDir || 'script'}, scriptId: ${scriptId.slice(0, 12)}…)`);
+  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script');
+  log(`✅ .clasp.json written (rootDir: ${config.rootDir || 'script'}, scriptId: ${scriptId.slice(0, 12)}…)`);
 
   const version = computeVersion(ctx.pkgPath, { counter: target.counter, skipBump: options.skipBump, log });
   const now = new Date().toISOString();
   config.stamper({ root, label, version, now, log });
+
+  // prePush hooks regenerate source that must be IN the push — F3Go30 rebuilds its "How it
+  // Works" panels from the canonical markdown here, so an edit to that source lands on every
+  // deploy with no manual sync step. They run after the stamp (so generated files can read the
+  // version) and before the push (so they are part of it). A prePush failure fails the deploy by
+  // default: unlike a post-deploy hook, nothing is live yet, so stopping costs nothing.
+  await runPostDeploy_(
+    (config.prePush || []).map(h => ({ required: true, ...h })),
+    { targetKey, target, label, version, now, scriptId, settings, root, env: ctx.env },
+    { log, errorLog }
+  );
 
   log(`\n🚀 Running: clasp push -f  (clasp_config_auth=${ctx.env.clasp_config_auth})\n`);
   exec('clasp push -f', { stdio: 'inherit', cwd: root, env: ctx.env });
@@ -205,7 +217,7 @@ async function summary(config, targetKey) {
   const label = target.label;
 
   log(`\n${target.emoji || '📦'}  Reading current ${label} deployment state (${scriptId.slice(0, 12)}…)…`);
-  writeClasp_(ctx.claspPath, scriptId, config.claspRootDir || 'script');
+  writeClasp_(ctx.claspPath, scriptId, config.rootDir || 'script');
 
   const { deploymentId } = resolveDeployment_(config, ctx, { exec });
   // No `clasp deploy` stdout exists here, so this always takes resolveRevision's fallback branch.
@@ -213,10 +225,15 @@ async function summary(config, targetKey) {
     exec('clasp deployments', { cwd: root, env: ctx.env }).toString()
   );
 
-  const localVersion = (config.readLocalVersion && config.readLocalVersion(ctx)) || null;
+  // Reading the stamped file is the CONSUMER's job, never the package's: the package must never
+  // read a version back out of what it stamped (#5). Here it is display-only — the local value
+  // exists solely so a divergence from what the server reports can be flagged — so it is opted
+  // into by config rather than done implicitly.
+  const local = (config.readLocalVersion && config.readLocalVersion(ctx)) || null;
+  const localVersion = local && (typeof local === 'string' ? local : local.version);
   const live = await queryLiveVersion(deploymentId, config.verifyOptions || {});
   let version = localVersion || '(unknown)';
-  let now = '(unknown)';
+  let now = (local && local.now) || '(unknown)';
 
   if (live) {
     version = live.version;
