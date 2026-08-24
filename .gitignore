@@ -16,3 +16,7 @@ playwright-report/
 # Local dev secrets (Drive folder paths, Axiom tokens, etc.) — never commit, copy
 # from the corresponding local.settings.example.json instead.
 local.settings.json
+
+# Personal editor theming (Peacock color customization) — per-machine preference,
+# not project config.
+.vscode/
