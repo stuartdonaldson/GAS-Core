@@ -796,7 +796,7 @@ is the authority on which stages share a session.
 | — | *(prior)* PracticeMix stages committed | F2 | P0 | ✅ | — | — |
 | **S1** | Secure the record | F1 | P0 | ✅ | — | **A** · Sonnet |
 | **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ◐ | S1 | **C** · Opus |
-| **S3** | CI on a declared test entry point | F5 | P0 | ○ | S1 | **A** · Sonnet |
+| **S3** | CI on a declared test entry point | F5 | P0 | ✅ | S1 | **A** · Sonnet |
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ○ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ○ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ○ | S1, S2 | **E** · Opus, solo |
@@ -902,7 +902,7 @@ decisions at the moment they are made.
 
 ---
 
-### S3 — CI on a declared test entry point  *(F5 · P0 · ○)*
+### S3 — CI on a declared test entry point  *(F5 · P0 · ✅)*
 
 **Goal:** every package change from S4 onward is covered by something that runs without a human.
 
@@ -910,14 +910,42 @@ decisions at the moment they are made.
 
 **AC**
 
-- [ ] Root `package.json` declares `"test"` as the single entry point; sub-scripts (`test:unit`, and `test:py` if/when it exists) are visible beneath it.
-- [ ] `.github/workflows/` gains a test workflow that checks out, sets up toolchains, and runs the declared script — containing **no** knowledge of which runner is used.
-- [ ] A second job refuses a `gas-*-v*` tag whose `packages/<name>/package.json` version does not match the tag.
-- [ ] Both jobs observed green on a real push; run URL or pasted output in *Handoff*.
-- [ ] The tag-guard job demonstrated to fail on a deliberately mismatched tag (test tag deleted afterwards).
-- [ ] Committed and pushed.
+- [x] Root `package.json` declares `"test"` as the single entry point; sub-scripts (`test:unit`, and `test:py` if/when it exists) are visible beneath it.
+- [x] `.github/workflows/` gains a test workflow that checks out, sets up toolchains, and runs the declared script — containing **no** knowledge of which runner is used.
+- [x] A second job refuses a `gas-*-v*` tag whose `packages/<name>/package.json` version does not match the tag.
+- [x] Both jobs observed green on a real push; run URL or pasted output in *Handoff*.
+- [x] The tag-guard job demonstrated to fail on a deliberately mismatched tag (test tag deleted afterwards).
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: `package.json`'s `"test"` now runs `npm run test:unit` (composing, per F5's recipe) instead of
+  being the runner directly; `test:unit` is the same `node --test` glob, extended to
+  `scripts/test/*.test.js`. Added `.github/workflows/test.yml` with two jobs: `test` (checkout, Node
+  22, `npm test`, no runner knowledge) and `tag-guard` (`if: startsWith(github.ref, 'refs/tags/gas-')`,
+  runs `scripts/check-tag-version.js "$GITHUB_REF_NAME"`). New `scripts/lib/tagVersion.js`
+  (`parseTag`/`checkTagVersion`, unit-tested, 6 tests, TDD red→green) backs the guard. Trigger needed
+  `tags: ['gas-*-v*']` added to `on.push` — the job's `if:` alone doesn't make the workflow run on a
+  tag push. Verified live: branch-push run green —
+  https://github.com/stuartdonaldson/GAS-Core/actions/runs/32772147709 (`test: success`,
+  `tag-guard: success` on that push). Deliberately mismatched tag
+  `gas-static-v9.9.9-test-mismatch` pushed and observed to fail tag-guard (`test: success`,
+  `tag-guard: failure`) at the same run URL pattern; log: `Tag "gas-static-v9.9.9-test-mismatch"
+  claims version 9.9.9-test-mismatch, but packages/gas-static/package.json declares 1.1.0.` Tag
+  deleted locally and on origin afterward. Committed in 3 pieces (entry-point + workflow + guard;
+  Node-version fix after CI caught a Node-20-vs-24 glob discrepancy; tag-trigger fix) and pushed.
+- Found: **Node 20's built-in test-runner glob resolution does not recurse `**` the same way Node 24
+  does** — `node --test 'libs/**/test/**/*.test.js' ...` passed locally (Node v24.14.0) and failed on
+  GitHub Actions' `setup-node@v4` with `node-version: '20'` (`Could not find
+  'libs/**/test/**/*.test.js'`) even though the file exists. Pinned CI to Node 22, confirmed green.
+  This is a portability trap for anyone copying this glob pattern into another repo's CI without
+  matching the Node version it was authored against — worth a line in whichever doc eventually
+  documents the CI recipe (S12).
+- Next stages must know: the `test` job runs on every push to `main`/`master` and every PR; the
+  `tag-guard` job only runs on a `gas-*-v*` tag push. S4 onward can rely on both.
+- Deliberately not done: no `test:py` sub-script — no Python test target is wired into `npm test` yet
+  (the existing `best-practices/google-sheet-verification/test_*.py` files are not invoked by CI);
+  per F5 this stays deferred until a Python test target actually exists, per the AC's own "if/when it
+  exists" framing. Not widened to add one here.
 
 **Next prompt**
 > S3 is closed and CI is green. Open S4, the last P0: implement the published-folder ownership
