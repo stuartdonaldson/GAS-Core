@@ -798,7 +798,7 @@ is the authority on which stages share a session.
 | **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ◐ | S1 | **C** · Opus |
 | **S3** | CI on a declared test entry point | F5 | P0 | ✅ | S1 | **A** · Sonnet |
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ○ | S2 | **D** · Opus, solo |
-| **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ○ | S1 | **A** · Sonnet |
+| **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ○ | S1, S2 | **E** · Opus, solo |
 | **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ◐ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
@@ -985,7 +985,7 @@ with a destructive failure mode and it touches two repos GAS-Core does not own.
 
 ---
 
-### S5 — Package hygiene  *(F17, F18 · P3 · ○)*
+### S5 — Package hygiene  *(F17, F18 · P3 · ✅)*
 
 **Goal:** remove the misleading empty `bin/` and give consumers a reason to upgrade that they can
 read from their own checkout.
@@ -994,14 +994,30 @@ read from their own checkout.
 
 **AC**
 
-- [ ] `packages/gas-static/bin/` deleted; no reference to it remains in README or `package.json` `files`.
-- [ ] `packages/gas-static/CHANGELOG.md` backfilled through v1.1.0 from the release commits.
-- [ ] `packages/gas-deploy/CHANGELOG.md` backfilled through v1.2.1.
-- [ ] Each entry names the consumer-visible change, not the commit subject.
-- [ ] The CLI question is recorded as deferred to S17 (not decided here) — one line in `packages/gas-static/README.md` or on the bead.
-- [ ] Committed and pushed.
+- [x] `packages/gas-static/bin/` deleted; no reference to it remains in README or `package.json` `files`.
+- [x] `packages/gas-static/CHANGELOG.md` backfilled through v1.1.0 from the release commits.
+- [x] `packages/gas-deploy/CHANGELOG.md` backfilled through v1.2.1.
+- [x] Each entry names the consumer-visible change, not the commit subject.
+- [x] The CLI question is recorded as deferred to S17 (not decided here) — one line in `packages/gas-static/README.md` or on the bead.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: Deleted the empty `packages/gas-static/bin/` (`rmdir`; it held nothing, `package.json`'s
+  `files` array never referenced it, and the README's only `bin`-adjacent text was an unrelated
+  `#!/usr/bin/env node` shebang in a usage example). Wrote `packages/gas-static/CHANGELOG.md`
+  (v1.0.0, v1.1.0) and `packages/gas-deploy/CHANGELOG.md` (v1.0.0–v1.2.1), both backfilled from
+  `git log` on each package's path and each version-bump commit's own body, phrased as
+  consumer-visible changes rather than commit subjects. Added the CLI-deferral line to
+  `packages/gas-static/README.md` §"What this package deliberately does not do", naming S17 and the
+  coupling to `webappUrl.from: 'resolve'`. `npm test` still green (127/127) after the deletion.
+  `grep -rn "gas-static/bin"` across the repo returns only PLAN2.md's own historical findings text
+  (F17, its stage prompts, this AC line) — no stale pointer in any README or config.
+- Found: nothing unexpected — the `bin/` dir really was inert, exactly as F17 stated.
+- Next stages must know: `packages/gas-static/CHANGELOG.md` and `packages/gas-deploy/CHANGELOG.md`
+  now exist; S8/S9's version bumps should append to them rather than starting fresh (their own AC
+  say "CHANGELOG updated").
+- Deliberately not done: did not decide the CLI question itself — only recorded it as deferred, per
+  the AC's own wording.
 
 **Next prompt**
 > S5 is closed. Open S6, the safe half of the graduation (PLAN2 §4.2/§4.3, F19a): move the findings

@@ -169,6 +169,10 @@ CDN hasn't picked up yet is indistinguishable from a failed fix.
 - `static-urls.js` generalisation (R9) — not yet needed by a second consumer.
 - The brokered-identity model (R5/R6/R7) — orthogonal; see
   `best-practices/gas-static-frontend/RECOMMENDATION.md` §3.3.
+- A standalone CLI (`bin/`) — no consumer runs build/publish outside `deployHooks()` yet. F3Go30 and
+  GActionSheet do today with their own scripts; whether this package should own that path is decided
+  at the RCV/F3Go30 conversions (PLAN2 S17), where a second consumer's actual usage settles it,
+  alongside the `webappUrl.from: 'resolve'` question it's coupled to.
 
 ## Tests
 
