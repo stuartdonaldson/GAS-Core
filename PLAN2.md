@@ -794,7 +794,7 @@ is the authority on which stages share a session.
 | Stage | Title | Findings | Pri | Status | Depends on | Session · model |
 |---|---|---|---|---|---|---|
 | — | *(prior)* PracticeMix stages committed | F2 | P0 | ✅ | — | — |
-| **S1** | Secure the record | F1 | P0 | ○ | — | **A** · Sonnet |
+| **S1** | Secure the record | F1 | P0 | ✅ | — | **A** · Sonnet |
 | **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ◐ | S1 | **C** · Opus |
 | **S3** | CI on a declared test entry point | F5 | P0 | ○ | S1 | **A** · Sonnet |
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ○ | S2 | **D** · Opus, solo |
@@ -817,7 +817,7 @@ is the authority on which stages share a session.
 
 ---
 
-### S1 — Secure the record  *(F1 · P0 · ○)*
+### S1 — Secure the record  *(F1 · P0 · ✅)*
 
 **Goal:** get every artifact of this exercise into `master` and pushed, so no later stage is written
 on top of untracked work.
@@ -826,18 +826,49 @@ on top of untracked work.
 
 **AC**
 
-- [ ] `xx` deleted; `.vscode/settings.json` either committed deliberately or added to `.gitignore` (state which, and why, in *Handoff*).
-- [ ] Three commits exist on `gas-deploy-recommendation-stage1a`: (a) the two `RECOMMENDATION*.md` + `PLAN2.md`, (b) best-practice README updates + `docs/demo-*.md` + `best-practices/gas-workspace-addons/`, (c) `PMIX-PLAN.md` + `work-log.md`.
-- [ ] `git status` reports a clean tree — no untracked files other than deliberately ignored ones.
-- [ ] Branch merged to `master` and pushed; `git status` shows "up to date with origin".
-- [ ] `git log --oneline master -5` pasted into *Handoff*.
-- [ ] A bead exists for every stage S2–S19 (see §7), each with its AC referenced.
+- [x] `xx` deleted; `.vscode/settings.json` either committed deliberately or added to `.gitignore` (state which, and why, in *Handoff*).
+- [x] Three commits exist on `gas-deploy-recommendation-stage1a`: (a) the two `RECOMMENDATION*.md` + `PLAN2.md`, (b) best-practice README updates + `docs/demo-*.md` + `best-practices/gas-workspace-addons/`, (c) `PMIX-PLAN.md` + `work-log.md`.
+- [x] `git status` reports a clean tree — no untracked files other than deliberately ignored ones.
+- [x] Branch merged to `master` and pushed; `git status` shows "up to date with origin".
+- [x] `git log --oneline master -5` pasted into *Handoff*.
+- [x] A bead exists for every stage S2–S19 (see §7), each with its AC referenced.
 
 **Handoff** *(fill at close)*
-- Done:
-- Found:
-- Next stages must know:
-- Deliberately not done:
+- Done: Deleted `xx`. Added `.vscode/` to `.gitignore` (Peacock editor theming — personal/per-machine,
+  not project config; not committed). Made 5 commits on `gas-deploy-recommendation-stage1a`: (1)
+  `PLAN2.md` + both `RECOMMENDATION*.md` + the `.gitignore`/`xx` cleanup, (2) best-practice README
+  updates + `docs/demo-*.md` + `gas-workspace-addons/`, (3) `PMIX-PLAN.md` + `work-log.md`, (4) filed
+  beads for S2–S19 and re-exported `.beads/*.jsonl` (2 commits — the export hook re-writes the file
+  again post-commit, which needed a trailing commit). Filed 18 beads (`GAS-Core-7kh` S2 ...
+  `GAS-Core-dof` S19; full map in §7-adjacent scratch, and each stage block above should be
+  cross-referenced by ID when next opened) wired with `blocks` deps matching §6.1's *Depends on*
+  column, plus `relates_to` links from S7→`GAS-Core-vo3`, S13→`GAS-Core-vo3`, S14→`GAS-Core-9iu`,
+  S9→`GAS-Core-8w0`, S18→`GAS-Core-na8`. Merged the branch to `master` with `--no-ff` and pushed both
+  `master` and the feature branch. `git log --oneline master -5`:
+  ```
+  596b85d bd: re-export issues.jsonl after S2-S19 bead filing
+  da76b63 bd: file S2-S19 tracking beads for PLAN2's staged execution plan
+  650a031 Add PMIX-PLAN.md (PracticeMix migration plan) and its work-log entries
+  88fe9e9 best-practices/docs updates from the gas-static/gas-deploy consolidation
+  feaeb0f Add PLAN2 review and its two recommendation source documents
+  ```
+- Found: The merge to `master` was much larger than the S1-authored commits alone (64 files,
+  10355 insertions) — `master` had never absorbed the branch's earlier work (`packages/gas-deploy`,
+  `packages/gas-static`, the `gas-cm-and-deployment`/`gas-webapp-admin` template deletions). That
+  work is now on `master` too, which is correct and expected (the whole branch was due to merge, not
+  just this session's commits) but worth flagging since it wasn't scoped in this stage's AC.
+  `git checkout master` triggers bd's post-checkout hook, which re-imports and locally modifies
+  `.beads/issues.jsonl` before you've done anything — `git restore` it before merging or committing,
+  it's a regenerable export.
+- Next stages must know: The bead IDs for S2–S19 are `GAS-Core-7kh`(S2) `GAS-Core-8r9`(S3)
+  `GAS-Core-j3b`(S4) `GAS-Core-3rg`(S5) `GAS-Core-gsf`(S6) `GAS-Core-emk`(S7) `GAS-Core-nuy`(S8)
+  `GAS-Core-8bp`(S9) `GAS-Core-y5k`(S10) `GAS-Core-98s`(S11) `GAS-Core-7bd`(S12) `GAS-Core-gne`(S13)
+  `GAS-Core-4gx`(S14) `GAS-Core-d7i`(S15) `GAS-Core-rgh`(S16) `GAS-Core-hek`(S17) `GAS-Core-f3d`(S18)
+  `GAS-Core-dof`(S19). Each bead's description points back at this file's §6 stage block rather than
+  restating AC — check boxes here as the source of truth, then `bd close` when a stage's block is
+  fully `[x]`.
+- Deliberately not done: Did not claim S2's bead yet — S1's own AC stop at "a bead exists for every
+  stage," not starting S2. (Session A continues into S3 next per §6.3, not S2 — S2 is session C.)
 
 **Next prompt**
 > S1 is closed. Open S2: create `adr/` in GAS-Core and write its first real ADR — the
@@ -1400,7 +1431,7 @@ deletions in the same session**.
 
 | # | Session | Stages | Model | Status | Why this grouping | Context load |
 |---|---|---|---|---|---|---|
-| 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ○ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
+| 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ▶ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
 | 2 | **C** | S2 + S14 | Opus | ○ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ○ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ○ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
