@@ -1,8 +1,8 @@
 # PLAN2 — post-PracticeMix review of the shared packages and best practices
 
-**Doc version:** 6 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
-**Revised:** 2026-08-24 (v6 — §6.3's sessions are now one table in preferred execution order with a
-status column; see §8) · **Scope:** GAS-Core
+**Doc version:** 7 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
+**Revised:** 2026-08-24 (v7 — S7's spike ran and refuted F16's premise; F16 corrected, S7's AC
+resolved to their honest state with two owner blockers named; see §8) · **Scope:** GAS-Core
 `packages/`, `libs/`, `best-practices/`, and the estate that consumes them (F3Go30,
 RankChoiceVoting, GActionSheet, NUUC-Dispatch, PracticeMix).
 
@@ -448,7 +448,20 @@ next admin-gate touch, not speculatively.
   invisible from a consumer checkout. **Recommend:** one file per package, backfilled from the
   release commits — cheap, and it is what makes F10's summary row actionable.
 
-### F16 — Audio transfer is backwards: direct read should be primary, base64 the fallback  *(P1)*
+### F16 — Audio transfer is backwards: direct read should be primary, base64 the fallback  *(P1 — premise refuted by the S7 spike, v7)*
+
+> **v7 — the spike ran and the premise did not survive it. Read §S7's *Handoff* before acting on
+> anything below.** In short: the two keyless URLs are refused by the browser (`drive.usercontent`
+> answers `403` to any request carrying `Sec-Fetch-Site: cross-site`), the API-key URL is the only
+> candidate left and is untested for want of a key, and — decisively — **3 of the 14 audio files the
+> live listing exposes are readable anonymously**. The eleven real practice tracks sit in
+> shortcut-linked subfolders that are not link-shared, and an API key cannot read those: a key
+> identifies a project, it grants nothing. Reading them from the browser needs the *visitor's* own
+> `drive.readonly` token, and the owner has decided (2026-08-24) that **PracticeMix requires no
+> consent screen** — see PracticeMix `adr/0008-no-oauth-consent-screen-for-practicemix.md`. The
+> direct-read path is therefore available only for files that are *deliberately* link-shared, and
+> adopting it now depends on two owner decisions, not on more engineering. The text below is kept as
+> the reasoning that produced the spike; where it asserts the files are link-shared, it is wrong.
 
 **Decided 2026-08-24, on the user's call: the primary path is a direct client-side read of the
 Drive file; the server-side base64 route stays as the fallback.**
@@ -470,7 +483,7 @@ the source must be **CORS-readable**:
 
 | Candidate | Verdict |
 |---|---|
-| `drive.google.com/uc?export=download&id=…`, and its redirect target `drive.usercontent.google.com/download` | **No.** No `Access-Control-Allow-Origin`, so `fetch().arrayBuffer()` is blocked — the same class of failure P0 hit, where the browser rejects before any body is readable. |
+| `drive.google.com/uc?export=download&id=…`, and its redirect target `drive.usercontent.google.com/download` | **No** — confirmed by the S7 spike, but *not* for the reason given here. **v7 correction:** `drive.usercontent` answers a link-shared file with `200` **and** `Access-Control-Allow-Origin: *` to a request that omits `Sec-Fetch-Site`, and with `403` and no CORS header at all once that header says `cross-site` — which every real browser fetch sends. `curl` sees the `200` and is a **false positive**; only a browser request answers this question. Net effect is as stated: the browser rejects before any body is readable. |
 | `<audio src="…">` element instead of `fetch` | **No.** A cross-origin media source without CORS taints the stream and `MediaElementAudioSourceNode` outputs silence; it also does not yield the buffer WSOLA needs. |
 | `https://www.googleapis.com/drive/v3/files/<id>?alt=media&key=<API_KEY>` | **Yes.** The Drive API endpoint sends CORS headers, an API key alone authorizes a link-shared file, and it supports Range requests — so progressive loading becomes possible, which the base64 round trip can never do. |
 
@@ -800,13 +813,13 @@ is the authority on which stages share a session.
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ✅ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ✅ | S1, S2 | **E** · Opus, solo |
-| **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ◐ | S2 | **F** · Opus, solo |
+| **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ▶ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ○ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
 | **S11** | Retire the copy-me scripts | F11 | P1 | ○ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
-| **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | S7 | **I** · Sonnet, solo |
+| **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | ~~S7~~ (discharged — S7 changed no audio code) | **I** · Sonnet, solo |
 | **S14** | Decide one config file or two | F15 | P2 | ✅ | S2 | **C** · Opus |
 | **S15** | Convert RankChoiceVoting | F7a | P1 | ○ | S8, S14 | **J** · Opus, solo |
 | **S16** | Convert GActionSheet | F7b | P1 | ○ | S15 | **K** · Sonnet, solo |
@@ -1279,7 +1292,7 @@ documents that a reader can reach, while the detail is still fresh — without w
 
 ---
 
-### S7 — PracticeMix: direct Drive read primary, base64 fallback  *(F16 · P1 · ◐ decided)*
+### S7 — PracticeMix: direct Drive read primary, base64 fallback  *(F16 · P1 · ▶ spike closed, implementation blocked)*
 
 **Goal:** stop round-tripping audio through the server when the files are already link-shared —
 spike first, exactly as P0 did, because assumed Google CORS behaviour has already cost a stage here.
@@ -1288,29 +1301,124 @@ spike first, exactly as P0 did, because assumed Google CORS behaviour has alread
 
 **AC — spike (must close before implementation begins)**
 
-- [ ] One real track fetched from `127.0.0.1` against the Drive API + API-key URL; response CORS headers pasted.
-- [ ] `decodeAudioData()` confirmed to succeed on the fetched buffer.
-- [ ] Range-request support confirmed or refuted; result recorded.
-- [ ] Spike result written into *Handoff* **before** any implementation edit.
+- [ ] One real track fetched from `127.0.0.1` against the Drive API + API-key URL; response CORS headers pasted. — **partially: recorded as refuted/blocked.** Four candidate URLs were probed from a real browser at `127.0.0.1`; the two keyless Drive download hosts reject before any body is readable and the API host is CORS-open but refuses without a key. The key-bearing fetch is the one thing not run, for want of a key — see *Blockers*.
+- [ ] `decodeAudioData()` confirmed to succeed on the fetched buffer. — **blocked with the same cause**; the decode harness is written and runs (`window.fetchAndDecode`), and the spec exercising it skips loudly with `no DRIVE_API_KEY in env` rather than passing silently.
+- [x] Range-request support confirmed or refuted; result recorded. — **recorded:** `drive.usercontent` honours `Range` (`206` + `Content-Range`) for a request `curl` can make, which is moot because a browser cannot make that request at all; `drive/v3` range support is untested for the same missing key.
+- [x] Spike result written into *Handoff* **before** any implementation edit. — no implementation edit was made; the audio path is untouched.
 
-**AC — implementation**
+**AC — implementation**  *(blocked; see *Blockers*. The premise these were written on — "the files are link-shared" — is false for 11 of 14 files.)*
 
 - [ ] Drive API enabled in the script's GCP project; API key created, restricted to the Drive API and referrer-restricted to the Pages origin.
 - [ ] The key is stamped as a build-time placeholder or served from `cmd=version` — never hand-edited into source.
 - [ ] `loadTrackFile()` tries the direct read and falls back to `getFileAsBase64` on any failure; the fallback path remains complete and tested.
 - [ ] A fallback occurrence is **visible** (log line at minimum), so a per-file sharing gap does not present as "the app is slow today".
-- [ ] Per-file sharing inheritance verified for files *moved* into the folder as well as uploaded ones; result recorded.
-- [ ] Both paths measured on a real multi-megabyte track; the delta P1R could not record is pasted into *Handoff*.
+- [x] Per-file sharing inheritance verified for files *moved* into the folder as well as uploaded ones; result recorded. — **done, and it is the stage's main finding:** 3 of 14 readable anonymously; see *Handoff*.
+- [ ] Both paths measured on a real multi-megabyte track; the delta P1R could not record is pasted into *Handoff*. — **not measurable:** every multi-megabyte track in the tree is restricted, so there is no file on which both paths can be run.
 - [ ] `src/Code.js:352`'s comment block amended to distinguish the forbidden owner-token routes from this file-ID path.
-- [ ] A PracticeMix ADR supersedes **ADR-0007** (the current head of ADR-0001's chain, written in S6) with the end position, carrying P1R's measurements and this spike's result.
-- [ ] `atc-t6w` (P6) amended: the gated-`getFileDownloadInfo` question dropped as moot; the two-sided nature of any future tightening (app ACL **and** Drive sharing) recorded in P6's scope.
-- [ ] The generalisable half written into `best-practices/gas-static-frontend/README.md` as pattern content — including that the file IDs then *are* the access boundary.
-- [ ] Committed and pushed.
+- [ ] A PracticeMix ADR supersedes **ADR-0007** (the current head of ADR-0001's chain, written in S6) with the end position, carrying P1R's measurements and this spike's result. — **discharged differently, deliberately:** ADR-0007 is *not* superseded, because the spike did not change the end position it records — base64 remains the only path. What did change is the reason, and the new decision behind it is recorded as PracticeMix **ADR-0008** (no OAuth consent screen), which is what makes ADR-0007 stand rather than fall.
+- [x] `atc-t6w` (P6) amended: the gated-`getFileDownloadInfo` question dropped as moot; the two-sided nature of any future tightening (app ACL **and** Drive sharing) recorded in P6's scope.
+- [x] The generalisable half written into `best-practices/gas-static-frontend/README.md` as pattern content — including that the file IDs then *are* the access boundary.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Blockers** *(both are owner decisions; neither is engineering)*
+
+1. **An API key, or authority to create one.** `https://www.googleapis.com/drive/v3/files/<id>?alt=media&key=<KEY>` is the only surviving candidate and it is untested. Nothing exists today: no key, and no standard GCP project attached to the script. Re-running the spike with one is two minutes — `DRIVE_API_KEY=<key> pnpm exec playwright test tests/0-drive-direct-read-spike.spec.js --project=chromium`.
+2. **A decision to link-share the practice-track folders.** Without it the direct read reaches 3 of 14 files and buys nothing for the content the choir actually uses. With it, the consequence F16 already states applies: the **file IDs become the access boundary**, independently of the app.
+
+**Handoff**
+
+- **Done:** Wrote the spike as four permanent specs in `tests/0-drive-direct-read-spike.spec.js` +
+  `tests/fixtures/drive-read-spike.html`, following P0's precedent (`tests/0-api-spike.spec.js`) —
+  a fixture served from a random `127.0.0.1` port so the browser, not `curl`, answers the CORS
+  question. Ran green against live TEST: **3 passed, 1 skipped** (the skip is the key-bearing
+  candidate, skipping loudly on `no DRIVE_API_KEY in env`). Wrote PracticeMix
+  `adr/0008-no-oauth-consent-screen-for-practicemix.md` and checked it with `adr-quality-check`.
+  Amended `atc-t6w`. Added the estate-level consent-screen posture table to
+  `best-practices/gas-static-frontend/README.md`. **Made no change to the audio path** — the premise
+  the implementation AC rest on did not survive the spike.
+- **Found — the premise is false: sharing is a per-file fact, and the content that matters is not
+  shared.** Of the 14 audio files the live TEST listing exposes, **3** are readable by an anonymous
+  caller — the three in the top-level `CURRENT CHOIR SEASON` folder. The other 11 live in
+  shortcut-linked subfolders (`123 Spirit of Life`, `For the Beauty of the Earth arr D Duvall`) and
+  `302` to `accounts.google.com`. Every multi-megabyte track is in that restricted set:
+  ```
+  public  0.24 MB  CURRENT CHOIR SEASON / Love Knocks And Waits For Us to Hear - Piano Bass.mp3
+  public  0.12 MB  CURRENT CHOIR SEASON / Love Knocks And Waits For Us to Hear - v1,3,4,ooo.mp3
+  public  0.09 MB  CURRENT CHOIR SEASON / Love Knocks And Waits For Us to Hear - v1,3,4.mp3
+  signin  0.81 MB  123 Spirit of Life / Alto_Spirit of Life.mp3
+  signin  0.81 MB  123 Spirit of Life / Bass_Spirit of Life.mp3
+  signin  0.81 MB  123 Spirit of Life / descant_Spirit of Life.mp3
+  signin  0.81 MB  123 Spirit of Life / Mix_Spirit of Life.mp3
+  signin  0.81 MB  123 Spirit of Life / Sop_Spirit of Life.mp3
+  signin  0.81 MB  123 Spirit of Life / Tenor_Spirit of Life.mp3
+  signin  2.45 MB  For the Beauty of the Earth arr D Duvall / FOR THE BEAUTY - for parts - all parts.mp3
+  signin  2.45 MB  For the Beauty of the Earth arr D Duvall / FOR THE BEAUTY - for parts - bass.mp3
+  signin  2.45 MB  For the Beauty of the Earth arr D Duvall / FOR THE BEAUTY - for parts - Soprano.mp3
+  signin  2.45 MB  For the Beauty of the Earth arr D Duvall / FOR THE BEAUTY - for parts - tenor.mp3
+  signin  2.46 MB  For the Beauty of the Earth arr D Duvall / FOR THE BEAUTY - for parts -alto.mp3
+  3 of 14 listed files are readable by an anonymous caller.
+  ```
+- **Found — `curl` is a false positive for this question, and that is the transferable lesson.**
+  `drive.usercontent.google.com/download` answers a link-shared file with `200` and
+  `access-control-allow-origin: *`, which is what made the URL look viable. Add the one header every
+  real cross-origin browser fetch sends and it becomes a `403` with no CORS header at all:
+  ```
+  usercontent without Sec-Fetch-Site: 200 (ACAO *)
+  usercontent with Sec-Fetch-Site: cross-site: 403 (ACAO null)
+  ```
+  Narrowed to the single trigger — `Sec-Fetch-Mode: cors` → 200, `Sec-Fetch-Dest: empty` → 200,
+  `Sec-Fetch-Site: cross-site` → **403**. This is hotlink protection, not a missing header, and it
+  is why §3 F16's candidate table has been corrected rather than confirmed. It is P0's lesson
+  repeating in the opposite direction: P0 assumed a readable body and got a CORS rejection; this
+  assumed a CORS rejection and found a header-conditional refusal.
+- **Found — the browser's own verdict, from `127.0.0.1`:**
+  ```
+  drive.google.com/uc?export=download        {"error":"Failed to fetch","ms":141}
+  drive.usercontent.google.com/download      {"error":"Failed to fetch","ms":138}
+  www.googleapis.com/drive/v3 alt=media      {"ok":false,"status":403,"type":"cors",
+                                              "contentType":"application/json; charset=UTF-8",...}
+  ```
+  The API host is the only one the browser can read at all (`type: "cors"`, and it echoes the
+  requesting `Origin` — `access-control-allow-origin: http://127.0.0.1:9999`). Its keyless body is
+  exactly `"The request is missing a valid API key."`, which is the whole remaining question.
+- **Found — an API key cannot rescue the restricted files, and the alternative that could was
+  refused.** A key identifies a project for quota and billing; it grants no access, so it reads only
+  what is already readable by anyone with the link. Reading the 11 restricted tracks from a browser
+  needs the **visitor's own** access token for `drive.readonly`, a Google *restricted* scope, which
+  forces an OAuth consent screen and — beyond a single Workspace domain — app verification. The
+  owner considered that model (the user's premise was "the user has permission; otherwise say so and
+  mail an admin") and decided on 2026-08-24 that **PracticeMix requires no consent screen**, while
+  noting the posture is per-project — NUUC-Dispatch may have one. Recorded as PracticeMix ADR-0008,
+  and as an estate-level table in `best-practices/gas-static-frontend/README.md` §"Consent-screen
+  posture across the estate". The admin-notification half of the user's premise ("you do not
+  currently have access" + mail an admin) is **not implementable on this design**: with no visitor
+  identity the app cannot know whose access is missing, and the server reads every file as the owner
+  anyway. It belongs to P6, where identity exists, and is noted on `atc-t6w`.
+- **Next stages must know:**
+  - **S13 (PracticeMix P5b) is unaffected and unblocked by this.** It depends on S7 in §6.1 only
+    because S7 was expected to change the audio path before PROD shipped. It did not: the audio path
+    is byte-for-byte what S6 left. **S13 can be opened now**, and the §6.1 dependency should be read
+    as discharged rather than waiting.
+  - **ADR-0007 stands.** Anyone reaching for "supersede 0007 with the direct read" should read
+    ADR-0008 first — the reason base64 is the only path changed, the path did not.
+  - The spike specs are permanent and cheap (~30 s, 3 live listings deep). They are also a **guard**:
+    if Google ever stops refusing cross-site reads of `usercontent`, the second spec fails with
+    `usercontent no longer blocks cross-site reads — re-open F16, this URL may now be viable`.
+  - `tests/0-drive-direct-read-spike.spec.js` needs `TEST_URL` set when `clasp deployments` cannot
+    authenticate (`TEST_URL="https://script.google.com/macros/s/<testDeploymentId>/exec"`); the id is
+    in `local.settings.json`.
+- **Deliberately not done:** no change to `loadTrackFile`, `loadTrackFileViaBase64`,
+  `AudioEngine.loadTrack` or `src/Code.js` — the implementation AC are blocked on two owner
+  decisions, and §6.0 rule 4 forbids inventing a third path to work around them. Did not create an
+  API key or a GCP project (an outward-facing change on the owner's cloud account; asked, and the
+  answer redirected the design instead). Did not link-share any Drive folder. Did not build the
+  admin-notification path (needs P6's identity to be truthful). Did not supersede ADR-0007. Did not
+  touch `AudioEngine.loadTrackFromBuffer`, which already exists in both front ends, unused, and is
+  the seam the direct read would land on if the blockers clear.
 
 **Next prompt**
-> S7 is closed. Open S8 in GAS-Core: fix `readBuildInfo_` (scope the regex to the `BUILD_INFO`
+> S7's spike is closed and its implementation is blocked on two owner decisions (see S7 *Blockers*).
+> Open S8 in GAS-Core: fix `readBuildInfo_` (scope the regex to the `BUILD_INFO`
 > literal, return every field including `buildDate`), then extend `assertPublishedBuild` to assert
 > `env` and `webappUrl`, and write the six-point static page interface contract from PLAN2 §3 F6
 > into `best-practices/gas-static-frontend/README.md`.
@@ -1752,7 +1860,7 @@ deletions in the same session**.
 | 2 | **C** | S2 + S14 | Opus | ✅ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ✅ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ✅ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
-| 5 | **F** | S7 — solo | Opus | ○ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
+| 5 | **F** | S7 — solo | Opus | ▶ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
 | 6 | **G** | S8 + S9 | Sonnet | ○ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
 | 7 | **H** | S11 + S12 | Opus | ○ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
 | 8 | **I** | S13 — solo | Sonnet | ○ | Live PROD deploy. Nothing else belongs in a session while a deploy is running. | Low |
@@ -1799,6 +1907,24 @@ from findings to the records that already exist, and the raw material for that f
 ---
 
 ## 8. Revision log
+
+**v7 — 2026-08-24.** Session F ran S7's spike; the result changed §3 F16 and S7 rather than
+confirming them. Three things recorded: (a) the two keyless Drive download URLs are refused by the
+browser — `drive.usercontent.google.com` answers `403` to any request carrying
+`Sec-Fetch-Site: cross-site`, while `curl`, which omits that header, sees `200` with
+`Access-Control-Allow-Origin: *` and is a **false positive**; F16's candidate table is corrected
+accordingly. (b) `www.googleapis.com/drive/v3` *is* CORS-open and needs only an API key, but no key
+and no standard GCP project exist, so that candidate is **untested**. (c) F16's premise is false:
+**3 of the 14 audio files the live listing exposes are readable anonymously**, the other 11 sit in
+shortcut-linked subfolders that are not link-shared, and an API key cannot reach them because a key
+grants no access. The alternative that could — the visitor's own `drive.readonly` token — was
+refused by the owner, who decided PracticeMix requires **no consent screen** while noting the
+posture is per-project; recorded as PracticeMix `adr/0008` and as a three-tier estate table in
+`best-practices/gas-static-frontend/README.md` §"Consent-screen posture across the estate". S7 is
+**▶**, not ✅: its spike AC are resolved and its implementation AC are blocked on two owner
+decisions (an API key; whether to link-share the practice-track folders), both named in a new
+*Blockers* block. S13's dependency on S7 is discharged — S7 changed no audio code. No other stage,
+AC or finding changed.
 
 **v6 — 2026-08-24.** §6.3 restructured: the two model-grouped tables (Sonnet, then Opus) become a
 **single table in preferred execution order** — A · C · D · E · F · G · H · I · J · K · L · M — a

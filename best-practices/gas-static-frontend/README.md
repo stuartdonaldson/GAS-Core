@@ -385,6 +385,45 @@ three are cheaper to state now than to discover later:
    every session for that app at once. Fine for low-privilege tiers; pair a shorter TTL with any
    future tier that can destroy data.
 
+### Consent-screen posture across the estate — three tiers, not two
+
+"Does this app need a Google consent screen?" gets answered wrongly because two different things
+both surface to a visitor as "Google sign-in". The distinction is **whose data the app asks for**,
+and it decides whether Google review is involved at all:
+
+| Tier | What the page holds | Consent screen | Google verification |
+|---|---|---|---|
+| **0 — anonymous** | nothing | none | none |
+| **1 — authentication** — a GIS **ID token** over `openid`/`email`/`profile` | a signed assertion of *who* the visitor is; no access to their data | minimal, self-serve | **none** — these are non-sensitive scopes, publish to production with no review, no user cap, no unverified-app warning |
+| **2 — authorization** — an OAuth **access token** for the visitor's own data (e.g. `drive.readonly`) | a credential that reads the visitor's Drive | required | **required** for sensitive/restricted scopes beyond a single Workspace domain — a review process measured in weeks. `drive.readonly` is *restricted*. An Internal consent screen avoids it but locks out everyone outside the org, personal `@gmail.com` accounts included |
+
+Tier 2 is the only one with a real cost, and it is the only one that can answer "does **this
+visitor** have access to **this file**". Tiers 0 and 1 cannot: under
+`executeAs: USER_DEPLOYING`, every request reads Drive as the *owner*, so the app has no view of
+the visitor's own permissions. A "you do not have access to this" message is a tier-2 feature.
+
+**Posture is a per-project call, and worth stating per project so nobody infers a default:**
+
+| Project | Tier | Note |
+|---|---|---|
+| **PracticeMix** | 0 | Deliberate — that repo's `adr/0008-no-oauth-consent-screen-for-practicemix.md`: it requests no visitor data, so it ships with no consent screen. Consequence accepted: audio for non-link-shared files stays on the server-side base64 path |
+| **NUUC-Dispatch** | 1 | The dispatcher of model B above; a consent screen is acceptable here, and tier 1 needs no verification |
+| **GActionSheet** | 1 (via B) | Consumes NUUC-Dispatch's assertion; holds no Google credential of its own |
+| **GAS-Core `static/` demo** | 1 | Model A end to end, `openid`/`email`/`profile` only |
+| **F3Go30, RankChoiceVoting** | 0 | Anonymous static pages today |
+
+**The API-key question, because it is the one people reach for at tier 0.** A browser API key
+(`…/drive/v3/files/<id>?alt=media&key=…`) is *not* a credential — it identifies a project for quota
+and billing, is meant to be public, and should be restricted by HTTP referrer. It grants nothing:
+it can read only a file that is **already readable by anyone with the link**. So it never widens
+access, and it is never a way to reach a restricted file. Note also that the obvious download hosts
+are not usable from a page: `drive.usercontent.google.com` answers `403` to any request carrying
+`Sec-Fetch-Site: cross-site`, which every cross-origin browser fetch sends — `curl` sees `200` with
+`Access-Control-Allow-Origin: *` and is a false positive. Only `www.googleapis.com/drive/v3` is
+CORS-open. If you adopt the direct read, remember the consequence: **the file IDs then *are* the
+access boundary**, so a later identity gate on the app is cosmetic for anyone who already has a
+listing, unless the Drive sharing is tightened at the same time.
+
 ---
 
 ## The security boundary this creates — run this pre-flight before flipping the manifest
