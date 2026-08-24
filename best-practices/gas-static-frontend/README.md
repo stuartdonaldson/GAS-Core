@@ -129,6 +129,21 @@ can hide a real problem. (F3Go30 used Playwright serving the static file from `1
 calling a live SIT deployment.) Use a `text/plain` POST body, not `application/json` — the latter
 triggers a preflight.
 
+**Classify the spike's result by HTTP status, never by body text.** A cross-origin `fetch()` to an
+`/exec` that is *not* `ANYONE_ANONYMOUS` does not resolve with a readable sign-in page — it
+**rejects outright** with `TypeError: Failed to fetch`, because Google's access-denied response
+carries no `Access-Control-Allow-Origin` and the browser blocks it before any body is readable.
+Fetching the identical URL from Node (no CORS enforcement there) shows the real content: **HTTP
+401**, body `<title>Page Not Found</title>` — a generic Google error wrapper, not sign-in markup.
+Measured in PracticeMix P0 against live TEST. Two consequences for the spike spec:
+
+- Classify on **status**: `401`/`403` ⇒ the deployment is not anonymous (sign-in required); any
+  other non-JSON response ⇒ deployment mid-propagation. Text-matching on `accounts.google.com` or
+  "sign in" is the obvious wrong answer and would never fire against this body.
+- Expect the spec to make **two** requests per run: the in-browser `fetch()` that is the actual
+  subject of the spike (and which is *expected* to throw before the flip), plus a Node-side raw POST
+  purely to turn that throw into a readable diagnostic.
+
 ### Step 2 — Give the client everything the server used to bake in
 
 An `HtmlService` page gets configuration "for free" via server-side templating (`<?= ... ?>`) and
@@ -193,6 +208,46 @@ exactly as costly as one in the new page. See
 [`../gas-playwright-testing/README.md`](../gas-playwright-testing/README.md) for the nested-iframe
 Playwright pattern this complements (the static page's own test has no iframe to navigate, unlike
 the GAS page it sits beside).
+
+**Run one suite against both front ends — detect the front end, don't configure it.** PracticeMix
+ran **57 specs unmodified** against both by changing one helper:
+
+- Make the frame accessor *detect* the sandbox. `getUserFrame()` looks for the `HtmlService`
+  sandbox frame (`#sandboxFrame`) and, when it is absent, returns the `Page` itself — a `Page` and a
+  `FrameLocator` both answer `.locator()`, so every spec below that line runs unchanged. A spec
+  should not have to know which front end it is pointed at.
+- Express the two front ends as **two Playwright projects over one suite**
+  (`--project=chromium --project=static`), the static project served from `127.0.0.1` by a
+  `webServer` entry so the run is genuinely cross-origin.
+- Run the dual pass with **`--retries=0 --max-failures=99`**. These flags are load-bearing, not
+  taste: a retry re-runs a whole `describe.serial` block, which distorts the failure list and
+  double-counts any server-side counter a spec asserts on.
+- **The acceptance signal is parity, not green.** The port is validated when every failure fails
+  *identically* on both front ends. A green-suite bar blocks the port on unrelated pre-existing
+  defects; the one *diverging* failure is what surfaces a real regression — in PracticeMix's dual
+  run that divergence (`N7`) caught a genuine build-stamp defect that a green bar would have lost in
+  the noise.
+- An assertion that reads a **server-side** counter (a `doGet` invocation count, say) sums *both*
+  projects during a dual run and is meaningless until it scopes its count. See
+  [`../gas-playwright-testing/README.md`](../gas-playwright-testing/README.md).
+
+**Then retire the old page against a stated criterion, not a feeling.** Write the criterion down
+before the dual run starts, so "is it safe yet" is a lookup rather than an argument. The recipe,
+from PracticeMix:
+
+Let **D** be the first PROD deploy that publishes the static page. Retire on whichever fires first:
+
+1. **Usage signal (preferred).** 7 consecutive days with **no page-load event from a non-test
+   client**. Log that event at the top of `doGet` and count *that* one specifically — it fires only
+   for page loads (an API `cmd=` route returns ahead of it, and a static-page `fetch()` never
+   reaches `doGet` at all), so its count *is* the count of visitors still landing on the old page.
+2. **Backstop.** D + 30 days. Bookmarks do not expire; the redirect that replaces the page is what
+   serves the people still holding them.
+
+Retirement is **blocked**, and the 7-day count resets, while any defect reproduces on the static
+page but not on the `HtmlService` one. Neither clause can start counting before the static page
+exists in PROD — retiring on TEST-only evidence removes the fallback the criterion exists to
+protect.
 
 ---
 
@@ -259,9 +314,9 @@ only if lapsed-user re-identify is genuinely unacceptable.
 
 ## What a first-party page unlocks next: identity & access control
 
-*(Forward-looking architecture — feasible on any real first-party page, validated but not yet built
-in the source project. Included because it's the single biggest capability the migration makes
-available, and it's impossible from inside the `HtmlService` anonymous sandbox.)*
+*(The single biggest capability the migration makes available, and one that is impossible from
+inside the `HtmlService` anonymous sandbox. Both models below are running in this estate; this
+repo's own [`static/`](../../static/) demo implements model A end to end.)*
 
 Under `ANYONE_ANONYMOUS`, an `HtmlService` web app knows nothing about who is visiting —
 `Session.getActiveUser().getEmail()` returns `''`. A real first-party static page can run **Google
@@ -294,14 +349,84 @@ can only act as you via Workspace domain-wide delegation, which doesn't exist fo
 `@gmail.com`. The `executeAs: USER_DEPLOYING` web app already gives the backend full
 Gmail/Drive/Calendar as the owner with zero extra infrastructure.
 
-**The security boundary this creates — concentrate testing here.** Because the backend runs with
-the owner's *full* authority for every anonymous request, the app-level ACL is the entire security
-boundary. Design it default-deny: a request with no valid, allowlisted, verified token gets only
-public actions; every privileged action requires a verified, allowlisted `sub`. Verify the JWT
-(signature + `aud` + `iss` + `exp`) on every privileged call, or verify once and bind the identity
-into an existing server session, and fail closed. Gate on `sub`, not `email` (email can be
-reassigned, especially in Workspace). A bug here exposes the owner's content — this is where test
-coverage belongs.
+### Two identity models — pick deliberately
+
+The estate runs both. They differ in where verification happens and what the page holds between
+visits, and that difference decides the per-request cost, the session length, and what "add a
+second app" costs.
+
+| | **A — direct GIS** | **B — brokered assertion** |
+|---|---|---|
+| Where | this repo's own [`static/`](../../static/) demo + [`gas-backend-example.js`](gas-backend-example.js) | `Static/pub/AS/index.html` → NUUC-Dispatch → GActionSheet |
+| Flow | page gets a Google ID token → POSTs it to the app → app calls `tokeninfo` → checks `aud`/`iss`/`exp` → allowlist on `sub` | page gets an ID token → POSTs it to the **dispatcher** with a target `aud` → dispatcher verifies, returns an HS256 assertion (`iss`/`sub`/`email`/`aud`/`exp`, 45-day TTL) → page caches it → sends it to the target app, which verifies locally with a shared per-target secret |
+| Per-request cost | one `UrlFetchApp` round trip to Google on every privileged call | HMAC only — no network call |
+| Session length | Google ID token lifetime (~1 h) → re-prompt | 45 days, cached in `localStorage`, renewed by a normal sign-in near `exp` |
+| Estate cost | one OAuth client ID + consent screen **per app** | one, shared; adding an app is a row in `ASSERTION_TARGETS` + a minted key |
+| Failure posture | fail-closed on the `sub` allowlist | fail-closed (`tier: 'NONE'`), keyed on `sub`, `aud`-scoped so an assertion for one app is useless at another |
+| Contract | this README | `NUUC-Dispatch/docs/interfaces/signed-identity-assertion.md`, its ADR-0002/0003 |
+
+**B is the better architecture once there is more than one app:** it removes a Google round trip
+from every privileged call, gives the iOS/Safari story a 45-day artifact instead of a 1-hour one
+(see §"Storage persistence" above), and makes adding an app cheap. **A remains the right answer for
+a single anonymous app with a small allowlist** — no dispatcher, no key distribution, no second
+deployment.
+
+Three weaknesses of B to fix before it spreads further — none is a reason not to use it, and all
+three are cheaper to state now than to discover later:
+
+1. **The verifier is copy-paste.** The reference implementation says so in its own comment: target
+   apps copy it. That is duplication on the side that matters most — a verifier is security code,
+   and a fail-open divergence in one copy is silent. It belongs in a shared GAS library
+   (`libs/`), not in each app.
+2. **HMAC is symmetric.** Every target app holds a key that can *mint* assertions for itself.
+   Acceptable inside one owner's estate; state it as a limitation in the contract, and name the
+   upgrade path (RS256 + a dispatcher-published JWKS route) rather than discovering it later.
+3. **No revocation inside the 45-day window.** The only lever is rotating `kid`, which invalidates
+   every session for that app at once. Fine for low-privilege tiers; pair a shorter TTL with any
+   future tier that can destroy data.
+
+---
+
+## The security boundary this creates — run this pre-flight before flipping the manifest
+
+Because the backend runs with the owner's *full* authority for every anonymous request, the
+app-level ACL is the entire security boundary. Design it default-deny: a request with no valid,
+allowlisted, verified token gets only public actions; every privileged action requires a verified,
+allowlisted `sub`. Verify the JWT (signature + `aud` + `iss` + `exp`) on every privileged call, or
+verify once and bind the identity into an existing server session, and fail closed. Gate on `sub`,
+not `email` (email can be reassigned, especially in Workspace). A bug here exposes the owner's
+content — this is where test coverage belongs.
+
+**`access: ANYONE` is doing more work than it looks like.** It is a weak gate ("must be *some*
+signed-in Google account") outsourced to Google, and the whole static pattern requires removing it:
+a cross-origin `fetch()` to an `ANYONE` deployment gets HTTP 401 and a sign-in page (Step 1). So
+flipping the manifest to `ANYONE_ANONYMOUS` deletes the only gate some routes ever had — before
+their own ACL exists.
+
+**The named pre-flight check — do this before the flip, not after:**
+
+1. **Enumerate every route that returns a token or a credential.** Not every route that *looks*
+   privileged: every route whose response body could carry one.
+2. **Prefer removal to gating.** A gate is code that must stay correct forever; a deleted route
+   cannot lapse. PracticeMix built the identity gate, deployed it, and then *removed* the two routes
+   instead — cheaper, needed no sign-in, and put no new friction in front of its users.
+3. **Close the `google.script.run` door too.** Removing a route from the API action map is *not*
+   enough while the `HtmlService` page is still deployed. Every server function that page can call
+   is reachable through `google.script.run`, which does not go through the API dispatcher at all.
+   Delete the function itself, and leave a comment where it was saying why it must not come back.
+4. **Re-verify anonymously, from outside.** After the flip, call every route with no session, no
+   cookies and no browser, and grep every response body for token shapes (`ya29`, `"token"`).
+   A route that answers `unknown_action` to an anonymous caller is the evidence; a route that
+   answers correctly *for you* proves nothing, because you are signed in.
+
+**The worked example, because it generalises.** PracticeMix exposed a `getOAuthToken()` route
+returning `ScriptApp.getOAuthToken()`. Under `executeAs: USER_DEPLOYING` that is the **owner's**
+token — and because one unrelated logging module called `DriveApp.getRootFolder()`, the script's
+inferred scope was the broad `…/auth/drive`, so the token carried full read/write access to the
+owner's *entire* Drive for ~1 hour. `access: ANYONE` was the only thing between that and the open
+internet. **A route's danger is set by the script's inferred OAuth scope, not by what the route
+appears to do** — one call in a file nobody was looking at widened "a token" into "the owner's whole
+Drive".
 
 ---
 
@@ -316,13 +441,43 @@ coverage belongs.
 | **iOS/Safari 7-day storage cap** | First-party hosting resets the clock on every visit but does not remove the cap; lapsed users (>7 days idle) still lose client-side storage. |
 | **Full backend authority per anonymous request** | Under `executeAs: USER_DEPLOYING` + `ANYONE_ANONYMOUS`, the app-level ACL is the *entire* security boundary if any privileged (Drive/Calendar/Gmail) action is added — default-deny and fail closed. |
 | **Two front ends to keep in parity** | Route new config through existing shared endpoints, not new ones, so payloads can't drift by hand-maintenance error. |
+| **Binary payloads round-trip through the server** | Once the raw-token routes are gone (see the pre-flight check above), file bytes come back through the backend as base64. Measured in PracticeMix on live TEST, cold context: 0.09 MB → 1386 ms, 0.12 MB → 1613 ms, 0.24 MB → 2015 ms, with decode flat at ~120–150 ms throughout — the *server round trip* dominates completely. Base64 also inflates the payload ~33 %, and `getFileAsBase64` hard-fails above 50 MB. This is the honest price of "no raw token on the wire"; if the content is link-shared, a client-side read by file ID is the cheaper path, and the file IDs then *are* the access boundary. |
 
 ---
 
-## What you get (F3Go30 numbers)
+## What you get
 
-- **~100x faster first paint**: ~18ms shell commit / ~30ms `domcontentloaded` vs. ~3.3s first byte
-  / ~4.5s `networkidle` for the equivalent GAS page, same network, same machine.
+**Measured, twice, on two independent migrations.** PracticeMix's is the more rigorous of the two —
+5 cold browser contexts per front end against one live TEST deployment, both front ends served by
+the same backend at the same moment:
+
+| Front end | App visible | FCP | Transferred |
+|---|---|---|---|
+| `HtmlService` | **4213 ms** | n/a | 282 KB |
+| static | **116 ms** | 160 ms | 43 KB |
+
+**≈36× faster to first app paint, on ≈6.6× fewer bytes** — and the gap widens on a revisit the
+measurement does not show, because the static page is served `cache-control: max-age=600` + an ETag
+while `HtmlService` re-ships its ~150 KB inline on every load, uncached.
+
+**The method matters as much as the number, because the obvious metrics are unavailable:**
+
+- **"App visible" (navigationStart → the first real app element being visible) is the only metric
+  comparable across the two front ends.** The `HtmlService` top document reports **no paint entry at
+  all** — its visible pixels are composited by a cross-origin iframe whose timeline the top frame
+  cannot read. FCP therefore exists for the static page and does not exist for the GAS one; quoting
+  FCP alone would be comparing a number against a blank.
+- **Count bytes over CDP `Network.loadingFinished`, not `content-length`**, for the same reason:
+  the sandboxed iframe's own subresources never appear in the top document's resource timing.
+- Take **several cold contexts per front end**, not one — the GAS side includes a cold-start path
+  whose variance is the whole point of averaging.
+
+F3Go30's earlier, independent measurement of the same pattern: **~100× faster first paint** —
+~18 ms shell commit / ~30 ms `domcontentloaded` vs. ~3.3 s first byte / ~4.5 s `networkidle` for the
+equivalent GAS page, same network, same machine.
+
+Beyond the numbers:
+
 - **No Google chrome above the page** — the static page is a normal top-level document.
 - **Zero server-side risk to the existing page** — the `HtmlService` page needs no modification
   beyond one additive shared config helper; the two front ends can run side by side indefinitely, or

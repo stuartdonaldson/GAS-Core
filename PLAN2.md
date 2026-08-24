@@ -799,7 +799,7 @@ is the authority on which stages share a session.
 | **S3** | CI on a declared test entry point | F5 | P0 | ✅ | S1 | **A** · Sonnet |
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ✅ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
-| **S6** | Graduate the observed-reality findings | F19a | P1 | ○ | S1, S2 | **E** · Opus, solo |
+| **S6** | Graduate the observed-reality findings | F19a | P1 | ✅ | S1, S2 | **E** · Opus, solo |
 | **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ◐ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ○ | S3, S5 | **G** · Sonnet |
@@ -1178,7 +1178,7 @@ read from their own checkout.
 
 ---
 
-### S6 — Graduate the observed-reality findings  *(F19a · P1 · ○)*
+### S6 — Graduate the observed-reality findings  *(F19a · P1 · ✅)*
 
 **Goal:** get the irreplaceable measurements and traps out of an untracked plan file and into
 documents that a reader can reach, while the detail is still fresh — without waiting on package fixes.
@@ -1187,18 +1187,88 @@ documents that a reader can reach, while the detail is still fresh — without w
 
 **AC**
 
-- [ ] `best-practices/gas-static-frontend/README.md` §"What you get" carries the first-paint numbers (4213 ms → 116 ms, 282 KB → 43 KB, 5 cold contexts per front end) **and the method** (app-visible is the only cross-comparable metric because the `HtmlService` top document reports no paint entry; bytes counted over CDP `Network.loadingFinished`, not `content-length`).
-- [ ] Same README gains §"The security boundary this creates" with D3 stated as a **named pre-flight check** — enumerate every route returning a token or credential before flipping the manifest, prefer removal to gating — including the `google.script.run` second door.
-- [ ] Same README §Step 6 carries the dual-run technique (`getUserFrame()` detecting the absent `#sandboxFrame`; one suite as two Playwright projects; `--retries=0 --max-failures=99` and why; parity-not-green as the acceptance signal) and the retirement-criterion recipe (7 consecutive days with no non-test `doGet.start`, backstop D+30, blocked while a static-only defect reproduces).
-- [ ] Same README carries §2.2's identity model A vs B comparison table and its three weaknesses of B.
-- [ ] The CORS/401 quirk is recorded in a permanent doc (name which).
-- [ ] PMIX-PLAN §7 handoff notes written into PracticeMix `work-log.md` via the `work-log` skill, one segment per stage, preserving the recorded session ids.
-- [ ] PracticeMix ADRs written: supersede ADR-0001; new ADR for D3 (remove rather than gate); new ADR for D5 (ship open and anonymous, identity deferred to P6). Each passes `adr-quality-check`.
-- [ ] No source document deleted in this stage; `PMIX-PLAN.md` and both `RECOMMENDATION*.md` still present.
-- [ ] Each graduated item is traceable — a table in *Handoff* mapping source section → destination file and heading.
-- [ ] Committed and pushed in both repos.
+- [x] `best-practices/gas-static-frontend/README.md` §"What you get" carries the first-paint numbers (4213 ms → 116 ms, 282 KB → 43 KB, 5 cold contexts per front end) **and the method** (app-visible is the only cross-comparable metric because the `HtmlService` top document reports no paint entry; bytes counted over CDP `Network.loadingFinished`, not `content-length`).
+- [x] Same README gains §"The security boundary this creates" with D3 stated as a **named pre-flight check** — enumerate every route returning a token or credential before flipping the manifest, prefer removal to gating — including the `google.script.run` second door.
+- [x] Same README §Step 6 carries the dual-run technique (`getUserFrame()` detecting the absent `#sandboxFrame`; one suite as two Playwright projects; `--retries=0 --max-failures=99` and why; parity-not-green as the acceptance signal) and the retirement-criterion recipe (7 consecutive days with no non-test `doGet.start`, backstop D+30, blocked while a static-only defect reproduces).
+- [x] Same README carries §2.2's identity model A vs B comparison table and its three weaknesses of B.
+- [x] The CORS/401 quirk is recorded in a permanent doc (name which).
+- [x] PMIX-PLAN §7 handoff notes written into PracticeMix `work-log.md` via the `work-log` skill, one segment per stage, preserving the recorded session ids.
+- [x] PracticeMix ADRs written: supersede ADR-0001; new ADR for D3 (remove rather than gate); new ADR for D5 (ship open and anonymous, identity deferred to P6). Each passes `adr-quality-check`.
+- [x] No source document deleted in this stage; `PMIX-PLAN.md` and both `RECOMMENDATION*.md` still present.
+- [x] Each graduated item is traceable — a table in *Handoff* mapping source section → destination file and heading.
+- [x] Committed and pushed in both repos.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+
+- **Done — traceability table (source section → destination):**
+
+  | Source | Destination |
+  |---|---|
+  | `PMIX-PLAN.md` §7 P5 — first-paint table (4213 ms → 116 ms, 282 KB → 43 KB, 5 cold contexts) **and the method** (app-visible is the only cross-comparable metric; no paint entry in the `HtmlService` top document; bytes over CDP `Network.loadingFinished`) | `best-practices/gas-static-frontend/README.md` §"What you get" — rewritten from "(F3Go30 numbers)" to carry both measurements, PracticeMix's table first and F3Go30's ~100× as the earlier independent one |
+  | §7 P1/P1R — D3: `ScriptApp.getOAuthToken()` returns the owner's token; `DriveApp.getRootFolder()` in a logging module widens the inferred scope to `…/auth/drive`; `access: ANYONE` was the only gate | same README, new §"The security boundary this creates — run this pre-flight before flipping the manifest" (promoted from a bolded paragraph inside the identity section to its own `##` section), as a 4-step named pre-flight + the worked example |
+  | §7 P1R — the `google.script.run` second door | same section, pre-flight step 3 |
+  | §7 P0 — CORS/401 quirk (cross-origin `fetch()` rejects with `TypeError: Failed to fetch`, no `ACAO` on the denial; Node sees HTTP 401 + `<title>Page Not Found</title>`; classify by status, never body text; two requests per spike run) | same README §Step 1 — **this is the permanent doc the AC asks to be named** |
+  | §7 P3/P5 — dual-run technique (`getUserFrame()` detecting the absent `#sandboxFrame`; two Playwright projects over one suite; `--retries=0 --max-failures=99` and why; parity-not-green) | same README §Step 6 |
+  | §7 P5 — retirement criterion (7 consecutive days with no non-test `doGet.start`, backstop D+30, blocked while a static-only defect reproduces) | same README §Step 6, as a recipe with D defined generically |
+  | `RECOMMENDATION.md` §2.2 — identity model A vs B table + B's three weaknesses | same README, new §"Two identity models — pick deliberately" inside §"What a first-party page unlocks next" |
+  | §7 P1R — base64 transfer table (1386–2015 ms for 0.09–0.24 MB, decode flat ~120–150 ms, ~33 % inflation, 50 MB hard fail) | same README §Constraints and Trade-offs, new row — the honest cost of "no raw token" |
+  | §7 P0–P5 — all stage handoff notes | PracticeMix `work-log.md` — **already done in a prior session** (see below) |
+  | D3 / D5 / the base64 end position | PracticeMix `adr/0005`, `adr/0006`, `adr/0007` |
+
+- **Done — PracticeMix ADRs.** `adr/0005-remove-raw-token-routes-rather-than-gate-them.md` (D3),
+  `adr/0006-ship-the-static-front-end-open-and-anonymous.md` (D5, carrying D1 direct-GIS and D2
+  inverted-allowlist as its design, and relating to ADR-0002's suspended audit goal), and
+  `adr/0007-base64-is-the-only-audio-transfer-path.md`, which **supersedes ADR-0001**; ADR-0001's
+  `Status:` line now reads `Superseded by [ADR-0007]`, matching the ADR-0003 → ADR-0004 precedent in
+  that repo. All three checked against `adr-quality-check`: required fields present and non-empty,
+  one decision each (0006's decision statement was rewritten mid-stage to state "ship open **with the
+  gate retained dormant**" as one choice rather than reading as two bundled ones), Accepted status
+  matching a direct Decision plus Easier/Harder Consequences, no accepted ADR edited except the
+  forward-pointer, and the supersede link resolving to a file that exists.
+- **Done — `PracticeMix/README.md` §Solution Strategy corrected.** It still described audio loading
+  as "prefers direct Drive API fetches from the browser using a short-lived OAuth token, with a
+  base64 fallback" — the state ADR-0005 deleted — and pointed at ADR-0001 as current. Repointed at
+  0007/0005/0006. This was not in the AC; it is one paragraph, and leaving a stale pointer to a
+  now-superseded ADR while writing its superseder would have been a defect of the same edit.
+- **Found — the work-log AC was already satisfied, and by design, not by accident.** PMIX-PLAN §7's
+  P0–P5 notes were written into PracticeMix's `work-log.md` on 2026-08-24 (entries
+  `## 2026-08-22 23:59:00`, `## 2026-08-23 23:59:00`), each preserving the session ids the notes
+  carried (`126e10fb`/`3ac6d5a8`/`3dfaa9e0`/`bd65f654`; `f7a44956`/`349b1afb`/… ) and each headed
+  with the note that they were reconstructed from `PMIX-PLAN.md` §7, "a transient execution artifact
+  that will not outlive the migration". The `## 2026-08-24 02:00:00` entry records the capture gap
+  being closed explicitly. Verified stage-by-stage — P0, P1, P1R, P2, P3, P4, P5 all present —
+  rather than re-writing them, which would have duplicated the record this stage exists to protect.
+  G1 is a GAS-Core stage, not a PracticeMix one; its provenance/deliberately-dropped list is S12's
+  target (`packages/gas-static/README.md` §Provenance) and was left alone here.
+- **Found — one ordering problem in the plan, resolved by writing the record that is true today.**
+  §4.2 says to write **one** ADR superseding ADR-0001 "carrying … F16's spike result as context",
+  but S7 (the spike) is ◐ and its result does not exist, while S6's AC requires the superseder now.
+  ADR-0007 therefore records the decision that has actually been taken — base64 is the sole path
+  because ADR-0005 removed the direct-fetch routes — and names the direct-read spike as its intended
+  successor, including the correction that ADR-0001's "CORS blocks browser-side Drive reads" premise
+  is too broad for a link-shared file read through the Drive API. **S7 supersedes ADR-0007 in turn**
+  when the spike lands; that is the ADR mechanic working, not a defect. S7's own AC ("a PracticeMix
+  ADR supersedes ADR-0001") should be read as "supersedes the current head of that chain".
+- **Next stages must know:**
+  - **S11** (retire the copy-me scripts) inherits a README that is now the single adopter document
+    for the *pattern*, the *evidence*, the *pre-flight* and the *two identity models*. Its §Step 5
+    still describes the hand-rolled build/publish; that is S11's edit, deliberately untouched here.
+  - **S9** owns "propagation is not atomic" — the three measured numbers were **not** written into
+    `best-practices/gas-deployment/README.md` by this stage, because that box is S9's AC, not S6's.
+  - **S12** deletes `PMIX-PLAN.md` and `RECOMMENDATION.md`. Everything §4.2/§4.3 marks durable that
+    is *not* about package behaviour is now out of those files; what remains for S12 to graduate
+    before deleting is the package-behaviour half (G1 provenance, the `BUILD_INFO` vs `version.html`
+    footgun, `runStatic()`'s config table, §3/§3.1/§3.2, the §4 guardrails).
+    `RECOMMENDATION.md` §2.2 is now graduated and can be deleted with the file.
+  - **S7** must supersede ADR-0007, not ADR-0001.
+- **Deliberately not done:** no source document deleted or edited — `PMIX-PLAN.md`,
+  `best-practices/gas-static-frontend/RECOMMENDATION.md` and
+  `best-practices/gas-deployment/RECOMMENDATION-declared-config.md` are all still present and
+  unchanged. Did not touch §Step 5 or the file's consolidation-status banner (S11). Did not write the
+  propagation numbers into the deployment best practice (S9). Did not graduate G1's provenance or the
+  `BUILD_INFO`/`version.html` footgun into `packages/gas-static/README.md` (S12). Did not re-write
+  PracticeMix's work-log entries, having verified they already hold the notes. Did not run
+  `implementation-gate` — this stage is documentation-only, which the skill's own scope excludes.
 
 **Next prompt**
 > S6 is closed; the observed-reality findings are safe. Open S7 in PracticeMix: spike the direct
@@ -1232,7 +1302,7 @@ spike first, exactly as P0 did, because assumed Google CORS behaviour has alread
 - [ ] Per-file sharing inheritance verified for files *moved* into the folder as well as uploaded ones; result recorded.
 - [ ] Both paths measured on a real multi-megabyte track; the delta P1R could not record is pasted into *Handoff*.
 - [ ] `src/Code.js:352`'s comment block amended to distinguish the forbidden owner-token routes from this file-ID path.
-- [ ] A PracticeMix ADR supersedes ADR-0001 with the end position, carrying P1R's measurements and this spike's result.
+- [ ] A PracticeMix ADR supersedes **ADR-0007** (the current head of ADR-0001's chain, written in S6) with the end position, carrying P1R's measurements and this spike's result.
 - [ ] `atc-t6w` (P6) amended: the gated-`getFileDownloadInfo` question dropped as moot; the two-sided nature of any future tightening (app ACL **and** Drive sharing) recorded in P6's scope.
 - [ ] The generalisable half written into `best-practices/gas-static-frontend/README.md` as pattern content — including that the file IDs then *are* the access boundary.
 - [ ] Committed and pushed.
@@ -1681,7 +1751,7 @@ deletions in the same session**.
 | 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ✅ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
 | 2 | **C** | S2 + S14 | Opus | ✅ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ✅ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
-| 4 | **E** | S6 — solo | Opus | ○ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
+| 4 | **E** | S6 — solo | Opus | ✅ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
 | 5 | **F** | S7 — solo | Opus | ○ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
 | 6 | **G** | S8 + S9 | Sonnet | ○ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
 | 7 | **H** | S11 + S12 | Opus | ○ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
