@@ -2,6 +2,13 @@
 
 Status: draft, iterating toward implementation.
 
+> **See also:** [`demo-surface-matrix.md`](demo-surface-matrix.md) — which interface surface
+> (Sheet menu, sidebar, webapp, static HTML, etc.) demonstrates which library/best-practice, and
+> [`demo-config-reference.md`](demo-config-reference.md) for the shared setup steps (clasp,
+> OAuth scopes, GIS sign-in, Script Properties) those demos draw on. This document covers the
+> harness *architecture*; the matrix covers *coverage* across the wider surface/feature space,
+> including surfaces (static HTML, add-ons) this harness deliberately doesn't own.
+
 > **Source-verification note.** Every claim in this document that asserts a
 > fact about the existing repo is annotated with the file (and where useful,
 > line range) it was checked against, e.g. `[libSheets.js:829–840]`. Claims

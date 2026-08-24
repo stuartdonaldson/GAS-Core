@@ -1,5 +1,10 @@
 # Best Practice: Porting a GAS HtmlService Page to a Static Front End
 
+> **Consolidation status:** the *pattern* below is settled and in production in three projects, but
+> the build/publish/verify pipeline around it is still three hand-copied scripts. See
+> [`RECOMMENDATION.md`](RECOMMENDATION.md) for the cross-project survey, the proposed `gas-static`
+> package, the brokered-identity model, and the PracticeMix migration plan.
+
 ## Overview
 
 This pattern replaces `HtmlService`-served pages with a plain static HTML/CSS/JS file (hosted
@@ -66,6 +71,30 @@ doesn't forward to the top-level document:
 None of this is a defect in `HtmlService` — it's doing exactly what it's designed to do (sandbox
 third-party script execution inside Google's UI shell). It's the wrong tool once page-shell
 performance and address-bar-level control matter.
+
+---
+
+## Feature availability: HtmlService sandbox vs. static first-party page
+
+Both environments run in the same real browser with the same JS engine — the difference isn't API
+surface, it's **which document the browser credits as the top-level, first-party one**. The
+`HtmlService` page is always a cross-origin document nested inside Google's wrapper; the static page
+*is* the top-level document. That single fact is the root cause of every row below.
+
+| Capability | `HtmlService` (nested sandboxed iframe) | Static first-party page |
+|---|---|---|
+| **Page `<title>`** | Only `HtmlOutput.setTitle()` at render time (server-side, pre-render) — client-side `document.title` never reaches the real tab | Full client-side control any time, e.g. after an async identify call resolves |
+| **Favicon** | Only `HtmlOutput.setFaviconUrl()`, and it requires an externally-hosted URL — `<link rel="icon">` is ignored | Normal `<link rel="icon">` works |
+| **Address bar / URL** | No access — the top-level URL belongs to Google; `history.replaceState`/`pushState` have no top-level URL to act on | Full control — query string is readable on load, `history.replaceState`/`pushState` work normally |
+| **Deep-link query params** | Invisible to client JS; must be read server-side in `doGet` (`e.parameter`) and templated into the page | `URLSearchParams` reads them directly, client-side |
+| **First paint / caching** | No CDN, no `Cache-Control` — every load re-runs through Apps Script's execution quota and cold-start path (~3.3s TTFB / ~4.5s `networkidle` measured in F3Go30) | Normal HTTP caching, CDN-fronted (~18ms shell commit / ~30ms `domcontentloaded`) |
+| **`localStorage` / `IndexedDB` / client-set `document.cookie` (Safari ITP)** | WebKit's 7-day cap **never resets** — taps happen inside a cross-origin nested iframe, which don't count as first-party interaction, and the top-level Google URL never navigates | Same 7-day cap exists (a Safari policy, not removable client-side) but it **resets on every real visit**, since the page itself is the top-level document |
+| **Server-set `HttpOnly` cookie** (the one storage class ITP never caps) | Not applicable — no server-set cookie exists in this model | Still unavailable from *pure* static hosting (no server to set it); needs Cloudflare Workers, Firebase Hosting + a function, or Cloud Run to issue one |
+| **Google Identity Services (GIS) sign-in / verifiable visitor identity** | Not workable — anonymous sandbox; `Session.getActiveUser().getEmail()` returns `''` under `ANYONE_ANONYMOUS` | Works fully — GIS ID token flow, verified server-side (`tokeninfo`/JWKS), `sub`-keyed allowlist. See [identity & access control](#what-a-first-party-page-unlocks-next-identity--access-control) below |
+| **Sandbox / wrapper chrome** | Google's UI wrapper always present above the page content | None — an ordinary top-level document |
+| **CORS request shape** | N/A — same-origin `google.script.run` calls | Must POST `text/plain`, not `application/json`, to avoid a preflight `OPTIONS` Apps Script's web app doesn't handle usefully |
+| **Config/data available "for free"** | `<?= ... ?>` server templating and `doGet`'s request access bake config in before the page ever reaches the browser | None — every such value must be re-routed through the static page's own URL query string or an API response payload |
+| **Backend business logic / Sheet-backed data / GAS execution authority** | Identical either way — same backend, same `doPost` dispatcher, same manifest (`executeAs`/`access`) | Identical — this is why the migration is additive, not a rewrite |
 
 ---
 

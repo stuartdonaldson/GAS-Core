@@ -1,5 +1,9 @@
 # Best Practice: GAS Web App Deployment Management
 
+> **Follow-on, proposed:** [`RECOMMENDATION-declared-config.md`](RECOMMENDATION-declared-config.md)
+> — where each fact is declared (anchor required, deployment ID cached), the admin gate as a
+> declared option with `libs/LibAdmin`, and canonical `local.settings.json` keys.
+
 ## Overview
 
 > **See also:** [`gas-cm-and-deployment/`](../gas-cm-and-deployment/README.md) for the
