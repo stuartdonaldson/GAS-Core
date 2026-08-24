@@ -795,7 +795,7 @@ is the authority on which stages share a session.
 |---|---|---|---|---|---|---|
 | — | *(prior)* PracticeMix stages committed | F2 | P0 | ✅ | — | — |
 | **S1** | Secure the record | F1 | P0 | ✅ | — | **A** · Sonnet |
-| **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ◐ | S1 | **C** · Opus |
+| **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ✅ | S1 | **C** · Opus |
 | **S3** | CI on a declared test entry point | F5 | P0 | ✅ | S1 | **A** · Sonnet |
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ○ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
@@ -807,7 +807,7 @@ is the authority on which stages share a session.
 | **S11** | Retire the copy-me scripts | F11 | P1 | ○ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
 | **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | S7 | **I** · Sonnet, solo |
-| **S14** | Decide one config file or two | F15 | P2 | ○ | S2 | **C** · Opus |
+| **S14** | Decide one config file or two | F15 | P2 | ✅ | S2 | **C** · Opus |
 | **S15** | Convert RankChoiceVoting | F7a | P1 | ○ | S8, S14 | **J** · Opus, solo |
 | **S16** | Convert GActionSheet | F7b | P1 | ○ | S15 | **K** · Sonnet, solo |
 | **S17** | Convert F3Go30; settle CSP/CLI/`from:'resolve'` | F7c | P1 | ○ | S5, S16 | **L** · Opus, solo |
@@ -877,7 +877,7 @@ on top of untracked work.
 
 ---
 
-### S2 — A home for decisions: GAS-Core `adr/`  *(F20 · P1 · ◐ decided)*
+### S2 — A home for decisions: GAS-Core `adr/`  *(F20 · P1 · ✅)*
 
 **Goal:** create `adr/` **with real content**, so S4, S14 and S17 have somewhere to put their
 decisions at the moment they are made.
@@ -886,14 +886,83 @@ decisions at the moment they are made.
 
 **AC**
 
-- [ ] `adr/README.md` states the scope rule from §4.5: a GAS-Core ADR constrains code GAS-Core ships; a best-practice README describes a pattern; a project ADR records what a project chose.
-- [ ] `adr/0001-*.md` exists and records the F7 decision (`webappUrl.from` supports `buildInfo` only; `from: 'resolve'` named as the correct third mode if standalone build is ever required).
-- [ ] Format matches PracticeMix's `adr/` convention (`000N-slug.md`, same field set).
-- [ ] `adr-quality-check` skill run against ADR-0001; output pasted into *Handoff*.
-- [ ] `adr/` is not empty at close and contains no placeholder/TODO ADR.
-- [ ] Committed and pushed.
+- [x] `adr/README.md` states the scope rule from §4.5: a GAS-Core ADR constrains code GAS-Core ships; a best-practice README describes a pattern; a project ADR records what a project chose.
+- [x] `adr/0001-*.md` exists and records the F7 decision (`webappUrl.from` supports `buildInfo` only; `from: 'resolve'` named as the correct third mode if standalone build is ever required).
+- [x] Format matches PracticeMix's `adr/` convention (`000N-slug.md`, same field set).
+- [x] `adr-quality-check` skill run against ADR-0001; output pasted into *Handoff*.
+- [x] `adr/` is not empty at close and contains no placeholder/TODO ADR.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: Created `adr/` with three files. `adr/README.md` carries §4.5's scope rule as a three-row
+  table (GAS-Core ADR = constrains code GAS-Core ships / best-practice README = a pattern a project
+  may decline / project ADR = what one project chose) with its own reversal test per row, the four
+  worked examples from §4.5, the `000N-slug.md` format block, the three rules (one decision per ADR;
+  accepted ADRs are superseded never edited; run `adr-quality-check` before committing), and an
+  index table. `adr/0001-webapp-url-from-build-info-only.md` records the F7 decision: `from` accepts
+  `'buildInfo'` and nothing else, a `deploymentId` mode is refused because it would put the
+  unreconciled binding inside the package, and `from: 'resolve'` is named as the correct third mode
+  if a conversion actually blocks on standalone build. Context carries §3 F7's full Mode A/Mode B
+  comparison table; Consequences splits easier/harder and states the accepted trade-off. Format
+  matches PracticeMix's `adr/` exactly (verified against `0002-webapp-execute-as-me.md` and
+  `0004-build-number-for-test-bare-semver-for-prod.md`: `# ADR-000N: Title`, then
+  `Status:`/`Date:`/`Supersedes:` lines, then `## Context` / `## Decision` / `## Consequences`).
+  PracticeMix has no `adr/README.md`, so GAS-Core's is new content, not a copy.
+- `adr-quality-check` run, all five steps, against ADR-0001 **and** ADR-0002 (S14's, written in the
+  same session). Step 1 — required fields, machine-checked:
+  ```
+  === 0001-webapp-url-from-build-info-only.md ===
+  3:Status: Accepted
+  4:Date: 2026-08-24
+  5:Supersedes: [None — new decision]
+  7:## Context
+  34:## Decision
+  52:## Consequences
+    Context: 2284 chars, ok
+    Decision: 1141 chars, ok
+    Consequences: 1437 chars, ok
+  === 0002-declared-config-two-files.md ===
+  3:Status: Accepted
+  4:Date: 2026-08-24
+  5:Supersedes: [None — new decision]
+  7:## Context
+  39:## Decision
+  60:## Consequences
+    Context: 1993 chars, ok
+    Decision: 1228 chars, ok
+    Consequences: 1268 chars, ok
+  ```
+  Step 2 (single decision) — 0001: one decision (`from` accepts `'buildInfo'` only); the
+  `from: 'resolve'` paragraph decides nothing, it names the option a future ADR would take and
+  states the condition (a conversion actually blocking) under which it gets built — deliberately
+  kept so the next reader does not reach for `deploymentId` instead. 0002: one decision (two files);
+  the "no consumer migrates on this ADR alone" clause is the rollout of that same decision, not a
+  second one. Step 3 (status consistency) — both `Accepted`, both Decision sections direct, both
+  Consequences carry **Easier**/**Harder**/**Trade-off accepted**. Step 4 (immutability) — both are
+  new files, no existing ADR edited. Step 5 (supersede chain) — both `Supersedes: [None — new
+  decision]`; every `000N-*.md` link in `adr/README.md`, ADR-0001 and ADR-0002 resolved against the
+  filesystem:
+  ```
+  OK  0001-webapp-url-from-build-info-only.md
+  OK  0002-declared-config-two-files.md
+  ```
+  No failures at any step.
+- Found: `packages/gas-static/lib/build.js:25` is the single enforcement point for the ADR-0001
+  constraint — it throws on any `from` other than `'buildInfo'`, so the ADR is already backed by
+  code and needs no follow-up change. Also: the `implementation-gate` skill was **not** invoked
+  (stage contract rule 2). This stage wrote three markdown files and changed no code, which is the
+  skill's own stated "not needed" case (documentation-only, no new logic). Stated here rather than
+  silently skipped.
+- Next stages must know: `adr/` now exists with 0001 and 0002 taken, so **S4's ADR is 0003**
+  (`0003-publish-ownership-manifest.md`) and S17's decisions follow from there. `adr/README.md`'s
+  index table is hand-maintained — every new ADR must add a row or the index silently rots.
+  ADR-0001 makes S15/S16/S17 conversions *mandatory* Mode A: none of the three may be converted by
+  adding a `deploymentId` mode, and if one of them genuinely blocks on standalone build, the answer
+  is a new ADR proposing `from: 'resolve'`, not a widening of 0001.
+- Deliberately not done: did not backfill ADRs for decisions already made elsewhere (R4's "the
+  package owns the pipeline, never the page", listed in §4.5 as GAS-Core ADR material) — S2's AC
+  asks for the F7 decision only, and §6.0 rule 4 forbids widening. Filed nothing new for it; it
+  remains §4.5's open list and S12's graduation target. Did not touch `packages/gas-static` code.
 
 **Next prompt**
 > S2 is closed and `adr/` exists. Stay in this session (§6.3 session C) and open **S14**: decide one
@@ -1296,7 +1365,7 @@ counting until it exists.
 
 ---
 
-### S14 — Decide one config file or two  *(F15 · P2 · ○)*
+### S14 — Decide one config file or two  *(F15 · P2 · ✅)*
 
 **Goal:** unblock `GAS-Core-9iu`, `-8w0` and `-hl5` with a decision, without migrating five repos on
 an unvalidated one.
@@ -1305,13 +1374,46 @@ an unvalidated one.
 
 **AC**
 
-- [ ] The decision is made and written as a GAS-Core ADR (recommended: two files — a committed `gas-project.json` + the gitignored `local.settings.json`); passes `adr-quality-check`.
-- [ ] The ADR records PracticeMix's zero-cost `staticRepoPath` adoption as the supporting datapoint.
-- [ ] `GAS-Core-9iu`, `-8w0`, `-hl5` amended with the decision and the fold-into-S15 sequencing.
-- [ ] **No consumer repo migrated in this stage** — explicitly confirmed.
-- [ ] Committed and pushed.
+- [x] The decision is made and written as a GAS-Core ADR (recommended: two files — a committed `gas-project.json` + the gitignored `local.settings.json`); passes `adr-quality-check`.
+- [x] The ADR records PracticeMix's zero-cost `staticRepoPath` adoption as the supporting datapoint.
+- [x] `GAS-Core-9iu`, `-8w0`, `-hl5` amended with the decision and the fold-into-S15 sequencing.
+- [x] **No consumer repo migrated in this stage** — explicitly confirmed.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: Decision taken as recommended — **two files**: a committed `gas-project.json` (envs, anchors,
+  deploy targets, static destinations, labels, the admin declaration and its ungated list) plus the
+  gitignored `local.settings.json` (clasp auth, secrets, absolute machine paths, and the
+  deployment-ID cache). Recorded as `adr/0002-declared-config-two-files.md`, with the dividing line
+  stated as *reviewability* rather than as a key list: a fact that is the same for every developer
+  belongs in git; a fact that is per-machine or secret does not. PracticeMix's zero-cost
+  `staticRepoPath` adoption is in the ADR's Context as the supporting datapoint, with the four files
+  that carry the key named (`tools/static-pages.js`, `local.settings.example.json`,
+  `tests/unit/static-pages.test.js`, plus `README.md`) and its limit stated honestly — it says the
+  canonical-naming half is free *when taken at the moment config is being written anyway*, which is
+  itself the argument for folding the split into a conversion rather than running it standalone.
+  `adr-quality-check` output for ADR-0002 is in S2's *Handoff* above (both ADRs were checked in one
+  pass). `GAS-Core-9iu`, `GAS-Core-8w0` and `GAS-Core-hl5` each amended via `bd comment` with the
+  decision, the ADR path, and the fold-into-S15 sequencing — each comment written to that bead's own
+  concern rather than pasted identically: 9iu gets the full decision + sequencing, 8w0 gets which
+  half `adminSecret` vs the declared admin option lands in, hl5 gets why `ungatedActions` must be in
+  the committed half (an exemption list that widens a security gate has to be reviewable in git).
+- Found: nothing that changes the decision. Worth recording: the ADR adds one consequence §6 did not
+  state — two files can *disagree* (an env declared in `gas-project.json` with no matching secret in
+  `local.settings.json`), so the split trades silent drift for silent absence unless that case fails
+  loudly and by name. S15 is where that failure mode first becomes real; whoever implements the
+  loader owes it an explicit error.
+- Next stages must know: **S15 is the validation run for this decision, not just a conversion.** The
+  two-file shape is adopted but unproven; per the ADR, the remaining four repos migrate in one pass
+  *only if* RCV's conversion leaves the shape unchanged. If S15 has to bend the shape, the right
+  move is a superseding ADR, not an edit to 0002 (accepted ADRs are superseded, never edited). The
+  three amended beads are unblocked as decisions but should still be implemented against the shape
+  S15 validates.
+- Deliberately not done: **no consumer repo migrated — explicitly confirmed.** No file was created
+  or modified in F3Go30, RankChoiceVoting, GActionSheet, NUUC-Dispatch or PracticeMix by this stage;
+  the only changes outside `adr/` are PLAN2.md's own checkboxes and three bd comments. No
+  `gas-project.json` was written anywhere, and no package code was changed to read one — the loader
+  work belongs to S15 and `GAS-Core-9iu`.
 
 **Next prompt**
 > S14 is closed. Open S15: convert RankChoiceVoting to `gas-static` — Mode A (`from: 'buildInfo'`)
@@ -1497,7 +1599,7 @@ deletions in the same session**.
 | # | Session | Stages | Model | Status | Why this grouping | Context load |
 |---|---|---|---|---|---|---|
 | 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ✅ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
-| 2 | **C** | S2 + S14 | Opus | ○ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
+| 2 | **C** | S2 + S14 | Opus | ✅ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ○ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ○ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
 | 5 | **F** | S7 — solo | Opus | ○ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
