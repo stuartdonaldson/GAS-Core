@@ -17,7 +17,7 @@ pnpm only, same reason as `gas-deploy` (npm has never supported subdirectory git
 
 ```jsonc
 "dependencies": {
-  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.1.0&path:/packages/gas-static"
+  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.2.0&path:/packages/gas-static"
 }
 ```
 
@@ -33,6 +33,7 @@ const { runStatic } = require('gas-static');
 
 module.exports = runStatic({
   root: __dirname + '/..',
+  projectName: 'DemoApp',                  // must match this project's entry in the host repo's PUBLISHERS.md
   srcDir: 'static-pages/src',
   distDir: 'static-pages/dist',
   stampedPages: ['index.html'],            // default: every .html at srcDir's root
@@ -99,6 +100,7 @@ keeps.
 | key | meaning |
 |---|---|
 | `root` | Absolute project root. Everything else is relative to it. |
+| `projectName` | This project's name as registered in the static-host repo's `PUBLISHERS.md` ownership map. Required once that host repo has a manifest — a publish whose `dest` is registered to a different project is refused. |
 | `srcDir` / `distDir` | Source and per-env output directories, relative to `root`. |
 | `stampedPages` | HTML files to stamp. Default: every `.html` file at `srcDir`'s own root (not recursive). |
 | `copyAssets` | Copy everything else under `srcDir` (subdirectories included) into each env's `dist/<env>/` verbatim. Default `true`. |
@@ -142,6 +144,7 @@ built.
 
 ## Publish
 
+- `dest` is validated **before anything is written** (see *Publish safety* below).
 - Missing `envs[env].repoKey` in `local.settings.json` = **warn and skip**, not a hard failure —
   a fresh clone without the sibling static-host repo checked out should not fail a deploy.
 - A `repoKey` path that isn't a git checkout = throw.
@@ -151,6 +154,41 @@ built.
 - A cross-repo push prompts for confirmation unless `chained: true` (invoked from a pipeline that
   already confirmed) or `yes: true` (non-interactive). Supply `confirmFn: async (message) =>
   boolean` for the prompt implementation — the package has no UI dependency of its own.
+- `git fetch` + `git pull --rebase --autostash` run immediately before the publish commit, and the
+  checkout must be on a branch with a tracking branch. A failed push raises a named diagnostic
+  saying the commit exists locally and how to finish it.
+
+## Publish safety — the host repo's `PUBLISHERS.md`
+
+A static-host repo is shared by several project repos, each owning one folder, and the publish
+starts by `rm -rf`-ing the folder it is about to write. So the host repo declares who publishes
+what, and this package refuses anything that declaration does not authorise — GAS-Core
+[ADR-0003](../../adr/0003-publish-ownership-manifest.md).
+
+`PUBLISHERS.md` at the host repo root carries the human half (built output only, never hand-edited,
+each folder owned 100 % by its originating repo, the folder → project → live-URL table) and one
+fenced ```json block — **the first one in the file** — that this package reads:
+
+```jsonc
+{
+  "pub/app-sit": { "project": "DemoApp", "env": "test", "url": "https://example.github.io/Static/pub/app-sit/" },
+  "pub/app":     { "project": "DemoApp", "env": "prod", "url": "https://example.github.io/Static/pub/app/" }
+}
+```
+
+- A `dest` with no exact entry is **refused**, listing what is registered.
+- A `dest` whose entry names a different `project` than `config.projectName` is **refused**, naming
+  the registered owner.
+- A manifest present with no `config.projectName` declared is **refused** — ownership cannot be
+  checked.
+- Structural backstop, always active even with no manifest: a `dest` that is empty, absolute,
+  contains `..`, resolves outside the host repo, resolves *to* the host repo, or names a `.git`
+  directory is refused. `rm -rf` is unreachable until every check passes.
+- A **missing or malformed** manifest warns and falls back to the structural checks only — the
+  bootstrap window before a host repo has one. It is not a way to opt out: add the manifest.
+
+Registering a new published folder is therefore a deliberate, reviewed two-line edit in the repo
+that owns the namespace.
 
 ## `assertPublishedBuild`
 

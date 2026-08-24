@@ -1,6 +1,6 @@
 {
   "name": "gas-static",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Shared static-front-end pipeline for Google Apps Script projects: placeholder stamping, per-env dist/, scoped cross-repo publish, and over-the-wire published-build verification.",
   "main": "index.js",
   "type": "commonjs",

@@ -53,3 +53,4 @@ Supersedes: [None — new decision] | [ADR-000M](000M-slug.md)
 |---|---|---|
 | [0001](0001-webapp-url-from-build-info-only.md) | `gas-static` resolves the web-app URL from `BUILD_INFO` only | Accepted |
 | [0002](0002-declared-config-two-files.md) | Declared configuration lives in two files, not one | Accepted |
+| [0003](0003-publish-ownership-manifest.md) | A static-host repo declares who publishes what, and `gas-static` validates against it | Accepted |

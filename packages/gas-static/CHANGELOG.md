@@ -1,5 +1,23 @@
 # Changelog — gas-static
 
+## 1.2.0
+
+- **Publish safety (PLAN2 F3/F4, [ADR-0003](../../adr/0003-publish-ownership-manifest.md)).** The
+  static-host repo now declares who publishes what in a `PUBLISHERS.md` ownership map, and
+  `publishEnv` validates `dest` against it *before* `copyDir_()`'s `rm -rf` is reachable: an
+  unregistered `dest`, a `dest` registered to another project, or a manifest with no
+  `config.projectName` declared all refuse the publish by name. New `lib/publishers.js`.
+- Structural backstop, active even with no manifest present: a `dest` that is empty, absolute,
+  contains `..`, resolves outside the host repo, resolves *to* the host repo, or names a `.git`
+  directory is refused. A missing or malformed manifest warns and leaves these as the only guard.
+- **Automatic rebase before the publish commit.** `git fetch`, an assertion that the checkout is on
+  a tracking branch, and `git pull --rebase --autostash` now run immediately before the commit, so a
+  concurrent publish from another project no longer turns into a rejected push with the page
+  committed locally and nothing published. Safe unattended because the ownership rule makes the
+  published paths disjoint. A failed push raises a named diagnostic saying the commit exists locally
+  and how to finish it.
+- New config key: `projectName` — required once the host repo has a `PUBLISHERS.md`.
+
 ## 1.1.0
 
 - Adds `lib/deploy.js`:
