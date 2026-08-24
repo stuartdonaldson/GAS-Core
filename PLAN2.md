@@ -803,7 +803,7 @@ is the authority on which stages share a session.
 | **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ◐ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ○ | S3, S5 | **G** · Sonnet |
-| **S10** | Playwright auth-state trap → best practice | F14 | P2 | ○ | S1 | **A** · Sonnet |
+| **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
 | **S11** | Retire the copy-me scripts | F11 | P1 | ○ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
 | **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | S7 | **I** · Sonnet, solo |
@@ -1159,7 +1159,7 @@ that it is behind.
 
 ---
 
-### S10 — Playwright auth-state trap → best practice  *(F14 · P2 · ○)*
+### S10 — Playwright auth-state trap → best practice  *(F14 · P2 · ✅)*
 
 **Goal:** stop a 30-second `beforeAll` timeout that looks nothing like an auth failure from costing
 another two stages.
@@ -1168,14 +1168,35 @@ another two stages.
 
 **AC**
 
-- [ ] `authStatePath()` lives in `best-practices/gas-playwright-testing/playwright-helpers.js`, resolving `PLAYWRIGHT_AUTH_STATE` the way `playwright.config.js` does.
-- [ ] The named diagnostic for a stale `.auth/user.json` ships with it, and its message describes the symptom (30 s `beforeAll` timeout) as well as the cause.
-- [ ] PracticeMix's local copy replaced by the shared helper, or a bead filed to do so at its next test touch; state which.
-- [ ] One line in the same folder notes that a server-side `doGet` counter assertion counts **both** front ends during a dual run and is meaningless until scoped.
-- [ ] `measure-first-paint.js` recorded as deferred to S15 (elevate at the second conversion, not before).
-- [ ] Committed and pushed.
+- [x] `authStatePath()` lives in `best-practices/gas-playwright-testing/playwright-helpers.js`, resolving `PLAYWRIGHT_AUTH_STATE` the way `playwright.config.js` does.
+- [x] The named diagnostic for a stale `.auth/user.json` ships with it, and its message describes the symptom (30 s `beforeAll` timeout) as well as the cause.
+- [x] PracticeMix's local copy replaced by the shared helper, or a bead filed to do so at its next test touch; state which.
+- [x] One line in the same folder notes that a server-side `doGet` counter assertion counts **both** front ends during a dual run and is meaningless until scoped.
+- [x] `measure-first-paint.js` recorded as deferred to S15 (elevate at the second conversion, not before).
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: Ported `authStatePath(repoRoot)` into
+  `best-practices/gas-playwright-testing/playwright-helpers.js` from PracticeMix's
+  `tests/test-utils.js` (same `PLAYWRIGHT_AUTH_STATE`-with-fallback resolution, parameterised on
+  `repoRoot` instead of a fixed `__dirname` since this file is a copy-into-your-repo template).
+  `getUserFrame()` now wraps its `waitFor` in try/catch and throws a diagnostic naming the resolved
+  `authStatePath()`, the ~30s `beforeAll` symptom, and the fix (re-run auth setup) — verified by hand
+  (`node -e` smoke test; no Playwright runtime available to actually trigger the timeout here).
+  `playwright.config.example.js` and the README's "recommended baseline" code sample both switched
+  from a hardcoded `'.auth/user.json'` literal to `authStatePath(__dirname)`. Added README §"The
+  stale `.auth/user.json` trap" and §"Scope a `doGet` counter assertion during a dual run". Filed
+  `atc-4xx` in PracticeMix's own tracker (via `bd -C /home/stuar/proj/PracticeMix`) to replace its
+  local copy with the shared helper at its next test-suite touch, rather than editing that repo live
+  in this session — S10 is scoped to GAS-Core plumbing (§6.3 session A's own rationale). Added a
+  "Not yet here" note under §Reusable Files recording `measure-first-paint.js` as deferred to the
+  second static-front-end conversion (S15), per F14.
+- Found: nothing unexpected; PracticeMix's existing code comment on `authStatePath()` already stated
+  the trap precisely, so this was a port, not new design.
+- Next stages must know: the shared helper module now exports `authStatePath` alongside the
+  pre-existing four; `atc-4xx` is the follow-up in PracticeMix's tracker, not this one's.
+- Deliberately not done: did not edit PracticeMix's `tests/test-utils.js` itself — filed the bead
+  instead, per the AC's "or a bead filed" branch.
 
 **Next prompt**
 > S10 is closed. Open S11: delete `build-static-pages.js` and `publish-static-pages.js` from
@@ -1475,7 +1496,7 @@ deletions in the same session**.
 
 | # | Session | Stages | Model | Status | Why this grouping | Context load |
 |---|---|---|---|---|---|---|
-| 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ▶ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
+| 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ✅ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
 | 2 | **C** | S2 + S14 | Opus | ○ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ○ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ○ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |

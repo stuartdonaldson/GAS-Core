@@ -189,6 +189,8 @@ function doGet(e) {
 ### playwright.config.js — recommended baseline
 
 ```javascript
+const { authStatePath } = require('./playwright-helpers');
+
 module.exports = defineConfig({
   testDir: './tests',
   timeout: 30000,
@@ -203,7 +205,7 @@ module.exports = defineConfig({
     baseURL: getTestUrl(),
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
-    storageState: '.auth/user.json',
+    storageState: authStatePath(__dirname), // honours PLAYWRIGHT_AUTH_STATE — see "The stale .auth/user.json trap" below
   },
 });
 ```
@@ -238,9 +240,15 @@ module.exports = defineConfig({
 
 | File | Purpose |
 |---|---|
-| `playwright-helpers.js` | `getUserFrame`, `capturePageDiagnostics`, `logDiagnostics` |
+| `playwright-helpers.js` | `authStatePath`, `getUserFrame`, `capturePageDiagnostics`, `logDiagnostics` |
 | `playwright.config.example.js` | Baseline config with URL resolution and auth |
 | `auth.setup.js` | Global setup: validates auth freshness, resolves test URL |
+
+**Not yet here:** PracticeMix's `tools/measure-first-paint.js` (5 cold CDP contexts per front end,
+counting bytes over `Network.loadingFinished` because the `HtmlService` top document reports no
+paint entry at all) is a genuinely reusable first-paint harness, but it's staying project-local until
+a second static front end exists to prove the extraction is worth it — see PLAN2 §3 F14/F7 and
+`packages/gas-static/README.md` §Provenance. Elevate it at that conversion, not before.
 
 ---
 
@@ -252,6 +260,33 @@ module.exports = defineConfig({
 | `#sandboxFrame` not found | `setXFrameOptionsMode` not set | Add `ALLOWALL` in `doGet` |
 | Tests pass locally, fail in CI | CI has no Drive for Desktop | Mock GasLogger or skip Drive-dependent assertions in CI |
 | Flaky timeouts | GAS cold start (first request after idle) | Increase `timeout` in `playwright.config.js`, or add a warm-up step |
+
+### The stale `.auth/user.json` trap
+
+A hardcoded `'.auth/user.json'` (or any storageState path that doesn't honour
+`PLAYWRIGHT_AUTH_STATE`) is a trap: once that session file is stale, **every** route —
+including a `cmd=version`-style ping, not just the app's real pages — comes back as a
+Google sign-in page. There's no `#userHtmlFrame` for `getUserFrame()` to find, so it
+just times out. The failure presents as a **~30 second `beforeAll`/setup timeout that
+looks nothing like an authentication problem** — nothing in the failure output mentions
+auth, and it's easy to spend a diagnostic session chasing an app bug that isn't there.
+
+Use `authStatePath()` from `playwright-helpers.js` everywhere a storageState path is
+needed (`playwright.config.js`'s `use.storageState`, any custom `auth.setup.js`) instead
+of a literal path — it resolves `PLAYWRIGHT_AUTH_STATE` the same way in every place that
+needs it, honouring a CI environment that points the session file outside the repo.
+`getUserFrame()`'s timeout error names this file and the fix directly, so the symptom is
+diagnosable from the error message alone rather than requiring this table.
+
+### Scope a `doGet` counter assertion during a dual (static + `HtmlService`) run
+
+If a project runs a static front end and the legacy `HtmlService` page side by side
+(e.g. during a migration's parity-testing window — see
+`best-practices/gas-static-frontend/README.md`), a server-side `doGet` hit-counter
+assertion counts **both** front ends' page loads unless it's scoped to one. An
+assertion written before the second front end existed will pass for the wrong reason,
+or fail confusingly when both are hit in the same run — scope it (by a query param, a
+referrer check, or splitting the counter) before trusting its number.
 
 ---
 

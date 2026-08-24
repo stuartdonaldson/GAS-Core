@@ -8,6 +8,7 @@
 const { defineConfig, devices } = require('@playwright/test');
 const path = require('path');
 const { execSync } = require('child_process');
+const { authStatePath } = require('./playwright-helpers');
 
 /**
  * Resolve the test URL.
@@ -62,7 +63,12 @@ module.exports = defineConfig({
     baseURL: getTestUrl(),
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
-    storageState: path.join(__dirname, '.auth/user.json'),
+    // Use authStatePath(), not a hardcoded '.auth/user.json' literal — it honours
+    // PLAYWRIGHT_AUTH_STATE, which a CI environment may point outside the repo.
+    // See playwright-helpers.js's authStatePath()/getUserFrame() docs for the trap
+    // a stale session file falls into (a ~30s beforeAll timeout that looks nothing
+    // like an auth problem).
+    storageState: authStatePath(__dirname),
   },
 
   projects: [

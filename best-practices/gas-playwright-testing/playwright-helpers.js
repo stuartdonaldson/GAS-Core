@@ -9,6 +9,27 @@
  */
 
 /**
+ * Resolves the Playwright session file the same way playwright.config.js and an
+ * auth.setup.js should — honouring PLAYWRIGHT_AUTH_STATE when it's set, so a CI
+ * environment that points it outside the repo is respected instead of silently
+ * falling back to an in-repo path.
+ *
+ * A stale in-repo `.auth/user.json` returns a Google sign-in page on every route —
+ * there is no `#userHtmlFrame` to wait for, so getUserFrame() below times out. That
+ * failure looks nothing like an auth problem: it presents as a ~30s `beforeAll`
+ * timeout. Use this function instead of a hardcoded '../.auth/user.json' literal,
+ * and see getUserFrame()'s diagnostic for the failure this is meant to prevent.
+ *
+ * @param {string} [repoRoot] - Defaults to the current working directory; pass your
+ *   test root explicitly if this file isn't required from there.
+ * @returns {string}
+ */
+function authStatePath(repoRoot = process.cwd()) {
+  const path = require('path');
+  return path.resolve(repoRoot, process.env.PLAYWRIGHT_AUTH_STATE || '.auth/user.json');
+}
+
+/**
  * Resolve the nested iframe structure of a Google Apps Script web app.
  *
  * GAS wraps every web app in two iframes:
@@ -22,7 +43,18 @@
 async function getUserFrame(page) {
   const sandboxFrame = page.frameLocator('#sandboxFrame');
   const userFrame = sandboxFrame.frameLocator('#userHtmlFrame');
-  await userFrame.locator('body').waitFor({ state: 'attached', timeout: 10000 });
+  try {
+    await userFrame.locator('body').waitFor({ state: 'attached', timeout: 10000 });
+  } catch (err) {
+    throw new Error(
+      `getUserFrame() timed out waiting for #userHtmlFrame's body — this usually isn't an app ` +
+      `bug, it's a stale Google session. If this test hung for ~10-30s in a beforeAll/setup step ` +
+      `and every route (including a cmd=version-style ping) is affected, the storageState at ` +
+      `${authStatePath()} is likely expired: Apps Script served a sign-in page instead of your ` +
+      `app, so there was never a #userHtmlFrame to find. Re-run your auth setup (e.g. ` +
+      `auth.setup.js) to refresh it. Original error: ${err.message}`
+    );
+  }
   return userFrame;
 }
 
@@ -141,4 +173,4 @@ async function captureIframeStructure(page) {
   return { iframeCount, sandboxPresent, userHtmlPresent };
 }
 
-module.exports = { getUserFrame, capturePageDiagnostics, logDiagnostics, captureIframeStructure };
+module.exports = { authStatePath, getUserFrame, capturePageDiagnostics, logDiagnostics, captureIframeStructure };
