@@ -797,7 +797,7 @@ is the authority on which stages share a session.
 | **S1** | Secure the record | F1 | P0 | ✅ | — | **A** · Sonnet |
 | **S2** | A home for decisions — GAS-Core `adr/` | F20 | P1 | ✅ | S1 | **C** · Opus |
 | **S3** | CI on a declared test entry point | F5 | P0 | ✅ | S1 | **A** · Sonnet |
-| **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ○ | S2 | **D** · Opus, solo |
+| **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ✅ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ○ | S1, S2 | **E** · Opus, solo |
 | **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ◐ | S2 | **F** · Opus, solo |
@@ -1024,7 +1024,7 @@ decisions at the moment they are made.
 
 ---
 
-### S4 — Publish safety: ownership manifest + automatic rebase  *(F3, F4 · P0 · ○)*
+### S4 — Publish safety: ownership manifest + automatic rebase  *(F3, F4 · P0 · ✅)*
 
 **Goal:** make a destructive or losing publish impossible rather than unlikely. This is the only P0
 with a destructive failure mode and it touches two repos GAS-Core does not own.
@@ -1033,19 +1033,99 @@ with a destructive failure mode and it touches two repos GAS-Core does not own.
 
 **AC**
 
-- [ ] `Static/PUBLISHERS.md` exists: human half (generated-only, never hand-edited, each folder owned 100% by its originating repo) + folder → project → live-URL table covering `AS`, `AS-sit`, `ballot`, `pmix-sit`.
-- [ ] `F3Static/PUBLISHERS.md` exists with the same shape, promoted from its existing `README.md`.
-- [ ] A machine-readable ownership map exists (fenced JSON in `PUBLISHERS.md` or a synced `publishers.json`) with the `{ "pub/<name>": { project, env, url } }` shape.
-- [ ] `publishEnv` refuses a `dest` with no exact entry, and refuses an entry whose `project` differs from the consumer's declared `projectName`, naming both the dest and its registered owner in the message.
-- [ ] Structural backstop refuses a `dest` that is empty, absolute, contains `..`, resolves outside `repoRoot`, resolves *to* `repoRoot`, or contains a `.git` — active even when no manifest is present.
-- [ ] Unit tests cover each refusal branch and the happy path; `rm -rf` is proven unreachable before validation passes.
-- [ ] `git fetch` + `git pull --rebase` runs immediately before the publish commit, with a code comment justifying safety by the disjoint-path ownership rule; an assertion confirms the checkout is on its tracking branch.
-- [ ] Push failure emits a named diagnostic stating the commit exists locally and how to finish it.
-- [ ] A real PracticeMix publish to `pub/pmix-sit` succeeds end-to-end after the change; output pasted.
-- [ ] `adr/000N-publish-ownership-manifest.md` written and passing `adr-quality-check`.
-- [ ] `gas-static` version bumped, tagged, and PracticeMix repinned; committed and pushed in all touched repos.
+- [x] `Static/PUBLISHERS.md` exists: human half (generated-only, never hand-edited, each folder owned 100% by its originating repo) + folder → project → live-URL table covering `AS`, `AS-sit`, `ballot`, `pmix-sit`.
+- [x] `F3Static/PUBLISHERS.md` exists with the same shape, promoted from its existing `README.md`.
+- [x] A machine-readable ownership map exists (fenced JSON in `PUBLISHERS.md` or a synced `publishers.json`) with the `{ "pub/<name>": { project, env, url } }` shape.
+- [x] `publishEnv` refuses a `dest` with no exact entry, and refuses an entry whose `project` differs from the consumer's declared `projectName`, naming both the dest and its registered owner in the message.
+- [x] Structural backstop refuses a `dest` that is empty, absolute, contains `..`, resolves outside `repoRoot`, resolves *to* `repoRoot`, or contains a `.git` — active even when no manifest is present.
+- [x] Unit tests cover each refusal branch and the happy path; `rm -rf` is proven unreachable before validation passes.
+- [x] `git fetch` + `git pull --rebase` runs immediately before the publish commit, with a code comment justifying safety by the disjoint-path ownership rule; an assertion confirms the checkout is on its tracking branch.
+- [x] Push failure emits a named diagnostic stating the commit exists locally and how to finish it.
+- [x] A real PracticeMix publish to `pub/pmix-sit` succeeds end-to-end after the change; output pasted.
+- [x] `adr/000N-publish-ownership-manifest.md` written and passing `adr-quality-check`.
+- [x] `gas-static` version bumped, tagged, and PracticeMix repinned; committed and pushed in all touched repos.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+- Done: New `packages/gas-static/lib/publishers.js` (the guard) + `test/publishers.test.js` (15
+  tests) and six new `test/publish.test.js` cases; `lib/publish.js` calls
+  `assertRegisteredDest_()` between the "does it exist" checks and `copyDir_()`, and runs
+  `git fetch` → tracking-branch assertion → `git pull --rebase --autostash` immediately before the
+  publish commit, with the push wrapped in a named diagnostic. `adr/0003-publish-ownership-manifest.md`
+  written, `adr/README.md` index row added. `gas-static` 1.1.0 → **1.2.0**, README (`projectName`
+  config row + a new *Publish safety* section) and CHANGELOG updated; tagged `gas-static-v1.2.0`.
+  `nuuc-it/Static` and `f3go30/static-pages` each gained a `PUBLISHERS.md` (rules + folder → project
+  → live-URL table + the fenced JSON map) with their `README.md` reduced to a pointer; both committed
+  and pushed. PracticeMix declares `projectName: 'PracticeMix'` and is repinned to v1.2.0
+  (committed and pushed on its current branch `hw0-waveform-graph` — that is the branch that was
+  checked out; **not** merged to its main, which is that project's call).
+- Manifest shape chosen: **fenced JSON inside `PUBLISHERS.md`**, not a sibling `publishers.json` —
+  §3 offered either, and one file with two readers has no sync problem to lose. The rule the package
+  enforces is "the **first** ```json fence in the file", stated in both the ADR and the README.
+- Evidence — full suite green (`npm test`, GAS-Core root): `ℹ tests 148 / ℹ pass 148 / ℹ fail 0`
+  (40 of them `gas-static`'s, up from 19).
+- Evidence — **real publish to `pub/pmix-sit`** from PracticeMix on v1.2.0, guard and rebase live:
+  ```
+  built "1.6.7.10"
+  copied static-pages/dist/test -> ../Static/pub/pmix-sit
+  Already up to date.
+  [main 6964335] Publish PracticeMix TEST v1.6.7.10
+   1 file changed, 1 insertion(+), 1 deletion(-)
+  To https://github.com/nuuc-it/Static.git
+     9fd8879..6964335  main -> main
+  published pub/pmix-sit and pushed (/home/stuar/proj/Static).
+  publish result: {"published":true,"repoRoot":"/home/stuar/proj/Static","dest":"pub/pmix-sit"}
+  ```
+  (`Already up to date.` is `git pull --rebase --autostash`'s own output.)
+- Evidence — the three refusal branches fired against the **live** `nuuc-it/Static` checkout, with
+  every other project's folder still intact afterwards:
+  ```
+  unregistered dest -> gas-static: dest "pub" is not registered in /home/stuar/proj/Static/PUBLISHERS.md. Registered: pub/AS, pub/AS-sit, pub/ballot, pub/pmix-sit, pub/pmix. Add an entry there (project, env, url) before publishing to a new folder.
+  dest owned by another project -> gas-static: dest "pub/ballot" is registered to RankChoiceVoting in /home/stuar/proj/Static/PUBLISHERS.md, but this project declares projectName "PracticeMix". Refusing to overwrite another project's published folder.
+  undeclared projectName -> gas-static: config.projectName is not declared, so ownership of "pub/pmix-sit" (registered to PracticeMix in /home/stuar/proj/Static/PUBLISHERS.md) cannot be checked. Declare projectName in the static config.
+  ```
+- Evidence — `adr-quality-check`, all five steps against ADR-0003. Step 1, machine-checked:
+  ```
+  === adr/0003-publish-ownership-manifest.md ===
+  3:Status: Accepted
+  4:Date: 2026-08-24
+  5:Supersedes: [None — new decision]
+  7:## Context
+  38:## Decision
+  65:## Consequences
+    Context: 1936 chars, ok
+    Decision: 1727 chars, ok
+    Consequences: 1222 chars, ok
+  --- link check ---
+  OK  0001-webapp-url-from-build-info-only.md
+  OK  0002-declared-config-two-files.md
+  OK  0003-publish-ownership-manifest.md
+  ```
+  Step 2 (single decision) — the decision is "the host repo declares ownership and the package
+  validates against it"; the automatic rebase is stated as the mechanism that declaration
+  *authorises* (its safety derives entirely from the disjoint-path ownership rule), which is why
+  F3 and F4 stay one ADR as §3 v2 merged them. Step 3 — `Accepted`, Decision direct, Consequences
+  carries Easier/Harder/Trade-off accepted. Step 4 — new file, no accepted ADR edited. Step 5 —
+  `Supersedes: [None — new decision]`; all links resolve (above).
+- Found: (a) `git pull --rebase` **cannot** run with the just-copied files unstaged — it aborts with
+  "cannot pull with rebase: You have unstaged changes". `--autostash` is load-bearing, not
+  decoration; anyone re-implementing this sequence without it gets a publish that fails on every
+  second run. (b) The same trap bit this session's own GAS-Core push (bd's `issues.jsonl` was dirty),
+  which is a second datapoint for the same lesson. (c) `pub/AS` and `pub/AS-sit` are owned by
+  **GActionSheet**, not NUUC-Dispatch, despite NUUC-Dispatch's docs referring to `../Static/pub/AS/`
+  as theirs — GActionSheet's `scripts/publish-static-portal.js` is what writes there. Registered to
+  GActionSheet accordingly. (d) `Static/pub/README.md` is a zero-byte file; left alone, out of scope.
+- Next stages must know: **every consumer must now declare `config.projectName`**, matching its
+  `PUBLISHERS.md` spelling exactly — S15 (RankChoiceVoting), S16 (GActionSheet) and S17 (F3Go30)
+  each add one line, and the names are already registered as `RankChoiceVoting`, `GActionSheet`,
+  `F3Go30`. `pub/pmix` is registered but not yet published, so **S13's PROD deploy will pass the
+  guard as-is** — no manifest edit needed there. A host repo with no `PUBLISHERS.md` still publishes
+  (warn + structural checks only), so an unconverted project is not blocked. `gas-static` is at
+  **v1.2.0**; S8's bump starts from there.
+- Deliberately not done: did not touch RankChoiceVoting, GActionSheet or F3Go30 — their publish
+  scripts are their own copies and converting them is S15–S17 (§6.0 rule 4). Did not merge
+  PracticeMix's `hw0-waveform-graph` branch. Did not delete `Static/pub/README.md`. Did not add a
+  CI check that the prose table and the JSON block agree — the JSON is what runs; noted in ADR-0003
+  *Harder* rather than filed, since no consumer has drifted yet.
 
 **Next prompt**
 > S4 is closed; publishing is guarded. Open S5, a short cleanup stage: delete the empty
@@ -1600,7 +1680,7 @@ deletions in the same session**.
 |---|---|---|---|---|---|---|
 | 1 | **A** | S1 + S3 + S5 + S10 | Sonnet | ✅ | All GAS-Core repo plumbing, and none of them reads a package's internals, so they do not compete. S1 leaves the tree clean and pushed, S3 adds the workflow, S5 deletes `bin/` and backfills two CHANGELOGs, S10 moves one helper. | Medium — S1's bead-filing AC is the heavy part, and it needs §6 in view, which the session already has |
 | 2 | **C** | S2 + S14 | Opus | ✅ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
-| 3 | **D** | S4 — solo | Opus | ○ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
+| 3 | **D** | S4 — solo | Opus | ✅ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ○ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
 | 5 | **F** | S7 — solo | Opus | ○ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
 | 6 | **G** | S8 + S9 | Sonnet | ○ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
