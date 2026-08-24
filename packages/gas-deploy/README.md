@@ -52,6 +52,78 @@ node tools/manage-deployments.js --summary --env sit    # read-only: no push, no
 node tools/manage-deployments.js --deploy-prod --skip-bump
 ```
 
+### `local.settings.json`
+
+Gitignored, never committed, and the only place IDs and credentials live. It has **no fixed
+schema**: every key is named by your own target config, which is why the package ships
+`local.settings.example.json` as a shape rather than a contract. A two-target project looks like:
+
+```jsonc
+{
+  "scriptId":         "1L33TE…",        // whichever key each target's `scriptIdKey` names
+  "claspAuth":        "~/.clasprc-you.json",   // `authKey`, default `claspAuth`
+  "sitDeploymentId":  "AKfycbx…",       // `deploymentIdKey` — written for you, see below
+  "prodDeploymentId": "AKfycby…",
+  "sitSheetId":       "1AbC…"           // `sheetIdKey`, only if the summary reports a spreadsheet
+}
+```
+
+- `scriptIdKey` — set it. One script project holding both deployments? Point both targets at the
+  same key, as PracticeMix does.
+- `deploymentIdKey` — **do not hand-populate**. The package writes it after each deploy
+  (resolver #1 then reuses it). Just reserve the key name.
+- `authKey` — set it. Without it clasp silently falls back to `~/.clasprc.json`, which may be a
+  different Google account that cannot see the project's deployments. Per target on purpose.
+- `sheetIdKey` — optional; an unset key prints `(<key> not set in local.settings.json)` in the
+  summary rather than a broken URL.
+
+Anything else in the file is your project's (a `staticRepoPath` for `gas-static`, an admin
+secret, …) — the package reads only the keys its config names.
+
+### Deployment description & the anchor
+
+Two config keys have to agree, and nothing enforces it:
+
+| | |
+|---|---|
+| `target.anchor` | The string resolver #2 (`anchorMatch`) looks for in each existing deployment's **description** to tell TEST from PROD. |
+| `config.describeDeployment` | Generates the `clasp deploy --description` text written on **every** deploy. |
+
+`clasp deploy -d` **replaces** the description; it is not additive. So if
+`describeDeployment` ever stops emitting `target.anchor`, this deploy succeeds and the *next*
+one loses resolver #2 — the failure surfaces one run later than the mistake. There is no
+"description prefix" field: the prefix is whatever `describeDeployment` puts in front, and it
+must contain the anchor.
+
+```js
+targets: {
+  test: { anchor: 'TEST-WEB-APP', /* … */ },
+  prod: { anchor: 'PROD-WEB-APP', /* … */ },
+},
+// -> "TEST-WEB-APP v1.6.8" — anchor first, so a `clasp deployments` listing sorts readably
+describeDeployment: (version, label, target) => `${target.anchor} v${version}`,
+```
+
+Keep run-specific data (timestamps, branch names) out of the anchor portion. The version after it
+is fine: `anchorMatch` is a substring test.
+
+### Project-specific summary rows
+
+`extraRows` is a `(ctx) => rows` function, called for the summary on both the success and the
+verification-failure path. A row with no value prints its `missing` text, never a broken URL:
+
+```js
+extraRows: (ctx) => [{
+  label: 'Static page',
+  value: liveUrl(ctx.targetKey),
+  missing: '(static hosting not configured)',
+}],
+```
+
+If the row's source is `gas-static`, do not write this by hand — that package's
+`pipeline.summaryRows()` returns exactly this function, already aware of whether the publish
+actually happened. See its README §"Chaining off a deploy".
+
 ## Config reference
 
 | key | meaning |
@@ -65,8 +137,8 @@ node tools/manage-deployments.js --deploy-prod --skip-bump
 | `resolveDeployment` | Resolver chain. Default `standardChain(target.anchor)`. |
 | `prePush` | Ordered hooks that run after the stamp and **before** the push, for source that must be part of it. Default `required: true` — nothing is live yet, so stopping is free. |
 | `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. |
-| `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. |
-| `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. |
+| `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. **Must contain `target.anchor`** — see §Deployment description & the anchor. |
+| `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. See §Project-specific summary rows. |
 | `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
 | `verifyOptions` | `{ intervalSec, timeoutSec }` for `assertDeployedVersion`. |
 | `claspFields` | Object or `(ctx) => object` — the rest of `.clasp.json` (`projectId`, `parentId`, extension lists). `scriptId`/`rootDir` are always written last and cannot be overridden. |
@@ -74,7 +146,8 @@ node tools/manage-deployments.js --deploy-prod --skip-bump
 | `ledgerEntry` / `deployMetadata` | `(ctx) => object` — shape the ledger line / `.deploy-metadata.json` yourself when a project's records predate the package and have readers. A shaped record is written verbatim: the package adds no `at`/`user` keys to it. |
 
 Per target: `scriptIdKey`, `label`, `emoji`, `counter` (`build` | `version`), `deploymentIdKey`,
-`sheetIdKey`, `authKey`, `anchor`.
+`sheetIdKey`, `authKey`, `anchor`. Every `*Key` names a key in `local.settings.json`, whose shape
+is therefore entirely yours — see §`local.settings.json` above.
 
 `counter: 'build'` bumps package.json's integer `build` and stamps `${version}.${build}`;
 `counter: 'version'` bumps the semver patch and resets `build` to 0.

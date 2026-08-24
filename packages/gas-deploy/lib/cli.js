@@ -33,7 +33,13 @@ const { writeLedgerEntry, writeDeployMetadata } = require('./ledger.js');
 
 function loadSettings_(settingsPath) {
   if (!fs.existsSync(settingsPath)) {
-    throw new Error(`local.settings.json not found at ${settingsPath} — copy the .example and populate the ID fields.`);
+    // Name a file that exists: this used to point at a ".example" neither the package nor any
+    // consumer shipped, so the one instruction it gave could not be followed.
+    const example = path.join(__dirname, '..', 'local.settings.example.json');
+    throw new Error(
+      `local.settings.json not found at ${settingsPath} — copy ${example} there and fill it in ` +
+      `(no fixed schema: the keys are the ones your targets' scriptIdKey/authKey/… name).`
+    );
   }
   return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 }

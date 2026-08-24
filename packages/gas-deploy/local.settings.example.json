@@ -1,0 +1,33 @@
+{
+  "_instructions": [
+    "Copy this file to <project root>/local.settings.json (gitignored) and fill it in.",
+    "",
+    "There is NO fixed schema. Every key below is named by your own manage-deployments.js",
+    "target config -- scriptIdKey / deploymentIdKey / sheetIdKey / authKey. Rename freely;",
+    "what matters is that the *Key values and this file agree. See the package README",
+    "section 'local.settings.json'.",
+    "",
+    "scriptId        - the Apps Script project ID, matching each target's scriptIdKey. Two",
+    "                  targets may point at the same key when one script project holds both",
+    "                  named deployments.",
+    "claspAuth       - the clasp credential file (a `clasp login --creds` output) this project",
+    "                  deploys with, matching authKey (default 'claspAuth', settable per target).",
+    "                  Without it clasp silently falls back to ~/.clasprc.json, which may be a",
+    "                  different Google account that cannot see this project's deployments.",
+    "                  Confirm which account can, rather than assuming:",
+    "                    clasp_config_auth=<candidate file> clasp deployments",
+    "*DeploymentId   - matching each target's deploymentIdKey. DO NOT hand-populate: the package",
+    "                  writes it after every deploy, and the resolver validates it against the",
+    "                  live list before reusing it. Reserve the key name and leave it out.",
+    "*SheetId        - matching each target's sheetIdKey. Optional: an unset key prints",
+    "                  '(<key> not set in local.settings.json)' in the deploy summary rather",
+    "                  than a broken URL.",
+    "",
+    "Project-specific keys (a static-host repo path for gas-static, an admin secret, an API",
+    "token) live in this same file. The package reads only the keys its config names."
+  ],
+  "scriptId": "YOUR_APPS_SCRIPT_PROJECT_ID",
+  "claspAuth": "~/.clasprc-<you>.json",
+  "sitSheetId": "",
+  "prodSheetId": ""
+}

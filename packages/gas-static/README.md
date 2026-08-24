@@ -17,7 +17,7 @@ pnpm only, same reason as `gas-deploy` (npm has never supported subdirectory git
 
 ```jsonc
 "dependencies": {
-  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.0.0&path:/packages/gas-static"
+  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.1.0&path:/packages/gas-static"
 }
 ```
 
@@ -57,6 +57,42 @@ await pipeline.build('sit');                                   // writes dist/si
 await pipeline.publish('sit', { yes: true });                  // copies + commits + pushes
 await pipeline.assertPublishedBuild('sit', '2.5.0.9');          // polls the live version.json
 ```
+
+## Chaining off a deploy (the `gas-deploy` integration)
+
+The page and the backend it talks to are one release, so publishing belongs *inside* the deploy,
+not beside it. Two lines in the consumer's `manage-deployments.js` are the whole of it:
+
+```js
+const staticPipeline = require('./tools/static-pages.js');
+
+runCli({
+  // …
+  postDeploy: staticPipeline.deployHooks(),   // build -> publish -> assertPublishedBuild
+  extraRows:  staticPipeline.summaryRows(),   // the "Static page" row in the deploy summary
+});
+```
+
+`deployHooks()` returns the three hooks in the only order that is safe, each `required: true` —
+overriding `gas-deploy`'s warn-and-continue default, which is right for a hook whose failure
+leaves working code live and wrong here: a new backend beside the previous page has shipped two
+halves that disagree. `publish` is `chained`, so it does not re-prompt for the cross-repo push;
+running the deploy was the confirmation.
+
+`summaryRows()` is what puts `liveUrl(env)` in the end-of-deploy summary block — including on the
+verification-failure path, which is when knowing which page is live matters most. It shares state
+with `deployHooks()`, so a publish skipped for an unset `repoKey` says so instead of printing a
+URL nobody just republished.
+
+| option (both take the same) | meaning |
+|---|---|
+| `envFor` | `(ctx) => envKey` — deploy `targetKey` → static env. Default: the `targetKey` verbatim, so keying `envs` by target key needs no mapping table that can drift. Pass the same `envFor` to both calls. |
+| `timeoutSec` / `intervalSec` | `deployHooks` only; passed to `assertPublishedBuild`. Default `timeoutSec: 300` — a CDN rebuild after push is slow, and a first publish into a new directory is slower. |
+| `label` | `summaryRows` only. Default `'Static page'`. |
+
+Hand-rolling these hooks is what `gas-static` exists to stop: the one project that did lost the
+summary row, so its static URL scrolled past mid-deploy and was missing from the block a reader
+keeps.
 
 ## Config reference
 
