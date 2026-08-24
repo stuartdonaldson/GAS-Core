@@ -140,3 +140,13 @@ Outcome [internal]: Committed as aed9f44 (best-practices/gas-server-logging/ onl
 
 ### Key Learnings:
 Apps Script's clasp bundles every project .js file into one shared global scope with no guaranteed load order, so a driver module cannot safely self-register into a core module via a top-level call (e.g. `GasLogger.registerDriver(AxiomLogger)` at file scope) — if the driver file happens to load first, the core global doesn't exist yet. A lazy `typeof X !== 'undefined'` check performed at call-time (not load-time) sidesteps the ordering hazard entirely.
+
+## 2026-07-16 00:00:00
+_session fc0a94e1 · v3 · 07-16_
+
+### Objective 1: Document HtmlService vs. static-frontend feature availability
+Rationale: User wanted a clear comparison of browser capabilities available inside GAS HtmlService's sandboxed iframe vs. a static first-party page calling the same web app as an API — info that existed but was scattered across the gas-static-frontend README's Problem, Storage persistence, and Identity sections.
+Outcome [developer-facing]: Added a consolidated "Feature availability" comparison table to best-practices/gas-static-frontend/README.md (title, favicon, address bar, deep-link params, caching, ITP storage cap, GIS identity, CORS shape, config templating), placed right after the Problem section as a scannable quick reference, with a link down to the existing identity section for detail.
+
+### Key Learnings:
+The HtmlService-vs-static gap isn't about missing browser APIs — both run in the same real browser. It's entirely about which document the browser treats as top-level/first-party: that single fact explains title/favicon/URL control, CDN caching, and (on iOS Safari) whether the 7-day ITP storage clock ever resets.
