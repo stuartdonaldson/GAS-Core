@@ -1,16 +1,21 @@
 # PLAN2 — post-PracticeMix review of the shared packages and best practices
 
-**Doc version:** 7.2 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
-**Revised:** 2026-08-25 (v7.2 — Session G closed S8 and S9; F6, F8, F10 and F13 discharged; see §8)
+**Doc version:** 7.3 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
+**Revised:** 2026-08-25 (v7.3 — Session H closed S11 and S12; F11 and F19 discharged; the source
+documents are deleted; see §8)
 · **Scope:** GAS-Core
 `packages/`, `libs/`, `best-practices/`, and the estate that consumes them (F3Go30,
 RankChoiceVoting, GActionSheet, NUUC-Dispatch, PracticeMix).
 
-Inputs reviewed: [`PMIX-PLAN.md`](PMIX-PLAN.md) (all 8 stages and their §7 handoff notes),
-[`best-practices/gas-static-frontend/RECOMMENDATION.md`](best-practices/gas-static-frontend/RECOMMENDATION.md),
+Inputs reviewed: `PMIX-PLAN.md` (all 8 stages and their §7 handoff notes),
+`best-practices/gas-static-frontend/RECOMMENDATION.md`,
 [`best-practices/gas-deployment/RECOMMENDATION-declared-config.md`](best-practices/gas-deployment/RECOMMENDATION-declared-config.md),
 `packages/gas-static` v1.1.0 and `packages/gas-deploy` v1.2.1 as shipped, and the five consumer
 checkouts under `/home/stuar/proj/`.
+
+**Two of those inputs no longer exist.** S12 deleted `PMIX-PLAN.md` and
+`gas-static-frontend/RECOMMENDATION.md` on 2026-08-25 after graduating their durable content per
+§4.2–§4.4; git history holds the originals. The third is reduced to the `LibAdmin` proposal.
 
 ---
 
@@ -62,7 +67,7 @@ Priority is risk × (1 / cost). P0 items are cheap and protect work already done
 | **F8** | Deploy propagation lag is rediscovered every stage and encoded nowhere | P1 | 3 h |
 | **F9** | G2 (`postFn` retirement) is unblocked and untouched — **held (v2)** | hold | 1 h |
 | **F10** | Consumer version pins have drifted (v1.1.0 / v1.2.0 / v1.2.1) with no way to notice | P1 | 2 h |
-| **F11** | `best-practices/gas-static-frontend/` still ships the superseded copy-me scripts | P1 | 1 h |
+| ~~**F11**~~ | ~~`best-practices/gas-static-frontend/` still ships the superseded copy-me scripts~~ — **done, S11** | — | — |
 | **F12** | The identity verifier is now copied a sixth time, with inverted semantics | P1 | 1 stage |
 | **F13** | `readBuildInfo_` under-reads and re-diverged at its first consumer | P2 | 1 h |
 | **F14** | PracticeMix's `measure-first-paint.js` and the `authStatePath()` fix are project-local | P2 | 2 h |
@@ -70,7 +75,7 @@ Priority is risk × (1 / cost). P0 items are cheap and protect work already done
 | **F16** | Audio transfer is backwards: the server round-trips base64 as the *primary* path when the files are link-shared and the client can read them directly | P1 | spike + 1 stage |
 | **F17** | Empty `packages/gas-static/bin/`; no CLI, and two conversion candidates need one | P3 | 2 h |
 | **F18** | Neither package has a CHANGELOG | P3 | 1 h |
-| **F19** | `PMIX-PLAN.md` and both `RECOMMENDATION*.md` have no end state — spent scaffolding and durable findings are interleaved in one file | P1 | 1 session |
+| ~~**F19**~~ | ~~`PMIX-PLAN.md` and both `RECOMMENDATION*.md` have no end state~~ — **done, S6 (F19a) + S12 (F19b)**; the first two deleted, the third reduced to the `LibAdmin` proposal | — | — |
 | **F20** | GAS-Core has no home for package **design decisions** — **decided (v2): add `adr/`**, §4.5 | P1 | 2 h |
 | **F21** | The eight-rule stage contract is a reusable process artifact stranded inside a project plan | P3 | 1 h |
 
@@ -819,7 +824,7 @@ is the authority on which stages share a session.
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ✅ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
 | **S11** | Retire the copy-me scripts | F11 | P1 | ✅ | S4, S8 | **H** · Opus |
-| **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
+| **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ✅ | S6, S8, S9, S11 | **H** · Opus |
 | **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | ~~S7~~ (discharged — S7 changed no audio code) | **I** · Sonnet, solo |
 | **S14** | Decide one config file or two | F15 | P2 | ✅ | S2 | **C** · Opus |
 | **S15** | Convert RankChoiceVoting | F7a | P1 | ○ | S8, S14 | **J** · Opus, solo |
@@ -1798,7 +1803,7 @@ must meet.
 
 ---
 
-### S12 — Graduate package behaviour; delete the sources  *(F19b · P1 · ○)*
+### S12 — Graduate package behaviour; delete the sources  *(F19b · P1 · ✅)*
 
 **Goal:** the source documents survive exactly until their replacements are correct — then they go.
 
@@ -1806,26 +1811,154 @@ must meet.
 
 **AC — into `packages/gas-static/README.md`**
 
-- [ ] New §Provenance: which of the three copies each behaviour came from, and why F3Go30's CSP generation, RCV's theme stamping, `static-urls.js`, `wait-for-static-deploy.js` and `smokeTestStaticApi` step 11 were **not** ported.
-- [ ] §Config reference's `webappUrl` row carries the `BUILD_INFO` vs `version.html` footgun (a display string is not a semver, and the GAS runtime cannot read `version.html` at all).
-- [ ] The `runStatic()` config table and returned-object shape checked against the plan for drift, then confirmed authoritative.
-- [ ] §"What this package deliberately does not do" extended with R4's guardrails (no framework/bundler; the package owns the pipeline never the page; not folded into the demo harness); `best-practices/README.md` carries the same.
+- [x] New §Provenance: which of the three copies each behaviour came from, and why F3Go30's CSP generation, RCV's theme stamping, `static-urls.js`, `wait-for-static-deploy.js` and `smokeTestStaticApi` step 11 were **not** ported.
+- [x] §Config reference's `webappUrl` row carries the `BUILD_INFO` vs `version.html` footgun (a display string is not a semver, and the GAS runtime cannot read `version.html` at all).
+- [x] The `runStatic()` config table and returned-object shape checked against the plan for drift, then confirmed authoritative.
+- [x] §"What this package deliberately does not do" extended with R4's guardrails (no framework/bundler; the package owns the pipeline never the page; not folded into the demo harness); `best-practices/README.md` carries the same.
 
 **AC — into `packages/gas-deploy/README.md`** *(from `RECOMMENDATION-declared-config.md`)*
 
-- [ ] §`local.settings.json` carries the canonical key list and the two rules (env-scoping is structural not a prefix; project-specific keys are fine if they do not restate a canonical concept); `local.settings.example.json` matches.
-- [ ] §"Deployment description & the anchor" extended with the anchor-declared / ID-cached reasoning (no-clasp-auth path, deletion detection, cost).
-- [ ] `best-practices/gas-deployment/README.md` carries the two orthogonal auth axes (operator secret vs visitor identity).
+- [x] §`local.settings.json` carries the canonical key list and the two rules (env-scoping is structural not a prefix; project-specific keys are fine if they do not restate a canonical concept); `local.settings.example.json` matches.
+- [x] §"Deployment description & the anchor" extended with the anchor-declared / ID-cached reasoning (no-clasp-auth path, deletion detection, cost).
+- [x] `best-practices/gas-deployment/README.md` carries the two orthogonal auth axes (operator secret vs visitor identity).
 
 **AC — deletions and residue**
 
-- [ ] R5, R6, R7, R9 confirmed to exist as beads; `best-practices/gas-static-frontend/RECOMMENDATION.md` deleted.
-- [ ] `PMIX-PLAN.md` deleted, with S6's work-log entries confirmed present first.
-- [ ] `RECOMMENDATION-declared-config.md` reduced to the `LibAdmin` proposal + the open decision, attached as design input to `GAS-Core-hl5`.
-- [ ] `grep -rn 'PMIX-PLAN\|RECOMMENDATION.md' .` returns no live cross-reference; output pasted.
-- [ ] Committed and pushed.
+- [x] R5, R6, R7, R9 confirmed to exist as beads; `best-practices/gas-static-frontend/RECOMMENDATION.md` deleted.
+- [x] `PMIX-PLAN.md` deleted, with S6's work-log entries confirmed present first.
+- [x] `RECOMMENDATION-declared-config.md` reduced to the `LibAdmin` proposal + the open decision, attached as design input to `GAS-Core-hl5`.
+- [x] `grep -rn 'PMIX-PLAN\|RECOMMENDATION.md' .` returns no live cross-reference; output pasted.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+
+**Done — `packages/gas-static/README.md`:**
+
+- **New §Provenance — "where each behaviour came from, and what was left behind."** A *taken*
+  table (nine rows: which of F3Go30 / RCV / GActionSheet each behaviour came from, and the three
+  that are **new** — write-all-pages-or-none, `assertPublishedBuild`, the `PUBLISHERS.md` guard)
+  and a *deliberately not ported* list carrying all five §4.2 items with their reasons: F3Go30's
+  CSP generation (page content, not pipeline — and the `transformPage` question is S17's),
+  RCV's theme/fonts/dev-contact stamping and GActionSheet's `doc.html` specifics (already
+  expressible through `placeholders` + `stampedPages`), F3Go30/RCV's deployment-ID `webappUrl`
+  mode (ADR-0001), and `wait-for-static-deploy.js` + `smokeTestStaticApi` step 11 (superseded by
+  `assertPublishedBuild`, which asserts three fields instead of scraping one out of a page body).
+  Plus the reason only one consumer was converted at G1.
+- **The `webappUrl` config row now carries the footgun**, stated as the concrete trap rather than
+  a caution: the file must be the **server-side** literal whose `version` is a bare semver;
+  PracticeMix's *client-side* `src/version.html` carries a `BUILD_INFO`-shaped literal whose
+  `version` is the display string `v1.6.7.8 (Rev. …)`, so pointing `file` there compares a display
+  string to a semver and can never pass — and the GAS runtime cannot read an `.html` file at all.
+- **New §"What `runStatic()` returns"** — the drift check produced an edit, not just a
+  confirmation. The plan's condensed table was correct in every row it had, but the README
+  documented the *config* and never the returned object, so a consumer had to read `index.js` for
+  the shape the plan wrote down. Now: the six-key object with each return shape, `publish`'s
+  option bag, the shared-state rule (call `deployHooks()` and `summaryRows()` off the **same**
+  pipeline object), and why `readBuildInfo_` is exported. Two real drifts found and fixed while
+  checking: the install snippet still pinned **v1.2.0** (current is v1.3.1), and `projectName` was
+  in the config table but in neither the plan's copy nor anywhere a reader would meet it first.
+- **§"What this package deliberately does not do" rewritten** with R4's guardrails as *decisions*:
+  no bundler/framework/templating (four independent implementations agreed), **the package owns
+  the pipeline and never the page**, no shared component library, and **not folded into the demo
+  harness** — a `webapp-html` kind rendered through `HtmlService` cannot demonstrate a pattern
+  whose whole purpose is escaping that iframe. `best-practices/README.md`'s index row carries the
+  same page/pipeline split.
+
+**Done — `packages/gas-deploy/README.md` and the deployment best practice:**
+
+- **§`local.settings.json` → new "Canonical keys"**: the eight-row canonical table with the
+  spellings each key replaces, the two rules stated as rules rather than a list to memorise, and
+  `*Key` demoted in writing to a **legacy override** for unmigrated projects rather than the normal
+  way to configure a new one. Points at ADR-0002 for which keys live in a committed file.
+  `local.settings.example.json`'s instruction block carries the same key list and both rules, so a
+  developer who copies the example meets the convention without reading the README.
+- **§"Deployment description & the anchor" → "Anchor declared, deployment ID cached — and why
+  both"**: the ownership table, the argument that the anchor is the *output of the one irreducible
+  manual step*, the cache's three jobs (no-clasp-auth path, deletion detection, cost), why the
+  "two sources of truth" objection is already neutralised, that neither failure mode is traded
+  away, the two naming/tooling conventions, and the free migration path for a project with no
+  anchors today.
+- **`best-practices/gas-deployment/README.md` → new §"Two orthogonal auth axes — decide each
+  separately"**, the comparison table plus the sentence the recommendation implied and never said:
+  a project that adds an operator secret and stops there has authenticated *its own tooling* and
+  nothing else; if the web app is anonymous and privileged, Axis 2 is the entire boundary.
+
+**Done — deletions and residue:**
+
+- **`PMIX-PLAN.md` deleted** (1176 lines). Work-log entries verified present in PracticeMix
+  `work-log.md` **first**, stage by stage: `## 2026-08-22 23:59:00` (P0, P1, P1R — sessions
+  `126e10fb`, `3ac6d5a8`, `3dfaa9e0`, `bd65f654`), `## 2026-08-23 23:59:00` (P2, P3, P4, P5 first
+  half — `f7a44956`, `349b1afb`, …), and `## 2026-08-24 02:00:00` recording the capture gap being
+  closed. G1 was a GAS-Core stage and its content is the §Provenance section above.
+- **`best-practices/gas-static-frontend/RECOMMENDATION.md` deleted** (343 lines). R5/R6/R7/R9
+  confirmed as beads before deleting, and **each bead's description rewritten** so it no longer
+  points at the deleted file: R5+R8 → `GAS-Core-l81`, R6+R7 → `GAS-Core-na8`, R9 → `GAS-Core-hek`
+  (S17, which is where a second consumer would justify it), R10 → `GAS-Core-e5z` (already open).
+  Each description now states what its source section said and what remains, rather than citing a
+  section number in a file that no longer exists.
+- **`RECOMMENDATION-declared-config.md` reduced, 301 → 132 lines**, retitled *"Proposal —
+  `libs/LibAdmin`: the admin gate as a declared option"*, naming `GAS-Core-hl5` as the bead it is
+  design input for, and opening with a **"what used to be here, and where it went" table** so the
+  graduation is traceable from the file itself. `GAS-Core-hl5`'s description now carries the same
+  pointer, so the bead and the file find each other from either end.
+- Cross-references repaired rather than left dangling: `best-practices/README.md`'s index row,
+  `best-practices/gas-deployment/README.md`'s follow-on banner (now names what landed where),
+  `best-practices/gas-webapp-admin/README.md`'s §4 pointer (the reduced file has no §4), and two
+  **code comments** — `packages/gas-static/lib/build.js` and `lib/publish.js` each cited
+  "RECOMMENDATION §4"/"§3.1" for their design rationale and now cite the README sections that
+  carry it.
+- Full suite green after every edit (`npm test`, repo root): `ℹ tests 177 / ℹ pass 177 / ℹ fail 0`.
+
+**Found:**
+
+- **The AC's "+ the open decision" no longer applies, and that is S14 working.** §6's one-config-
+  file-or-two question was open when this stage was written; S14 decided it and wrote
+  `adr/0002-declared-config-two-files.md`. So §6 graduated as a *decision* rather than being kept
+  as an open question, and the reduced file's disposition table records it as `**decided** →
+  adr/0002`. The AC box is checked on that basis, not by leaving a settled question lying open.
+- **Two ADRs now cite sections of a file that no longer has them, and were deliberately not
+  edited.** `adr/0001` §Context cites `RECOMMENDATION-declared-config.md` §3 (the cached-deployment-
+  ID defence) and `adr/0002` §Context cites its §6. Both citations were true when written and both
+  ADRs are **Accepted**; §4.5's own rule is that an accepted ADR is superseded, never edited. Git
+  history holds the text they cite, and the content itself is now in
+  `packages/gas-deploy/README.md`. Editing an accepted ADR to tidy a reference would cost more than
+  the dangling section number does.
+- **The `grep -rn 'PMIX-PLAN\|RECOMMENDATION.md' .` output is not empty and is correct.** Every
+  remaining hit resolves to **`best-practices/gas-deployment/RECOMMENDATION.md`**, which is a
+  different document — the completed `gas-deploy` survey, `Status: complete`, not in PLAN2 §4's
+  disposition and not deleted by this stage. `PMIX-PLAN` returns **zero** hits outside `PLAN2.md`'s
+  own narrative. The live-cross-reference check is therefore clean: no file in the repo points at
+  anything this stage deleted.
+
+**Next stages must know:**
+
+- **The scaffolding is gone.** `PMIX-PLAN.md` no longer exists, so PLAN2 §6.0's restated stage
+  contract is now the only copy of those eight rules in this repo until **S19** folds them into
+  DevStandard. S19 must take them from PLAN2 §6.0, not from PMIX-PLAN.
+- **S15/S16/S17** now have complete package documentation to convert against: §Provenance says
+  what was dropped and why (so a conversion does not re-add `wait-for-static-deploy.js` or
+  re-litigate the `webappUrl` mode), §"What `runStatic()` returns" gives the object shape, and the
+  canonical-keys section names `staticRepoPath` before a fourth spelling gets invented.
+- **S17** inherits the `transformPage`/CSP question with the plan's reasoning preserved in
+  §Provenance rather than in a deleted file.
+- **`GAS-Core-hl5`** now owns the `LibAdmin` design end to end — the reduced file is its design
+  input and says so, and the bead says so back.
+
+**Deliberately not done:**
+
+- **Did not delete or edit `best-practices/gas-deployment/RECOMMENDATION.md`.** It is a different,
+  completed document with no disposition in PLAN2 §4; giving it one is a new finding, not this
+  stage (rule 4). Its six `publish-static-pages` hits are true references to F3Go30's and RCV's own
+  files, which exist until S15/S17 convert them.
+- **Did not edit `adr/0001` or `adr/0002`** to repair their citations into the reduced file — see
+  *Found*.
+- **Did not rename `RECOMMENDATION-declared-config.md`** even though its content is now solely the
+  `LibAdmin` proposal. A rename breaks `GAS-Core-hl5`'s and `gas-webapp-admin/README.md`'s pointers
+  for cosmetic gain; the file's own title and banner say what it is.
+- **Did not run `implementation-gate`** — documentation-only apart from two comment lines, which
+  the skill's own scope excludes.
+- Did not add a GAS-Core `work-log.md` entry for this session; the `work-log` skill is invoked
+  separately and no AC asks for it.
 
 **Next prompt**
 > S12 is closed; the scaffolding is gone and the findings are in permanent homes. Open S13 in
@@ -2099,7 +2232,7 @@ deletions in the same session**.
 | 4 | **E** | S6 — solo | Opus | ✅ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
 | 5 | **F** | S7 — solo | Opus | ⏸ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
 | 6 | **G** | S8 + S9 | Sonnet | ✅ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
-| 7 | **H** | S11 + S12 | Opus | ○ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
+| 7 | **H** | S11 + S12 | Opus | ✅ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
 | 8 | **I** | S13 — solo | Sonnet | ○ | Live PROD deploy. Nothing else belongs in a session while a deploy is running. | Low |
 | 9 | **J** | S15 — solo | Opus | ○ | First conversion: it validates S14's decision against reality and is the stage most likely to surface a needed package change. | High (whole repo) |
 | 10 | **K** | S16 — solo, immediately after J | Sonnet | ○ | Sonnet-safe *only because* S15 established the recipe. Run it as the very next session, while copying that recipe is still the obvious move. | High (whole repo) |
@@ -2144,6 +2277,37 @@ from findings to the records that already exist, and the raw material for that f
 ---
 
 ## 8. Revision log
+
+**v7.3 — 2026-08-25.** Session H ran and closed **S11** and **S12**; both are ✅ with every AC box
+checked, so **F11 and F19 are discharged** and the review's scaffolding is gone.
+
+- **S11** deleted `best-practices/gas-static-frontend/build-static-pages.js` and
+  `publish-static-pages.js` — the copy-me templates a package had already superseded — and rewrote
+  that folder's README so one document carries all three requirements an adopter must meet:
+  §Step 5 (now "Build and publish through `gas-static`", with the config example, the
+  `deployHooks()`/`summaryRows()` two-liner, the `buildInfo`-only rationale and the host repo's
+  `PUBLISHERS.md` ownership manifest), the six-point interface contract, and the security
+  pre-flight. The banner and the adopter checklist link all three.
+- **S12** graduated the package-behaviour half and then deleted the sources. Into
+  `packages/gas-static/README.md`: a new **§Provenance** (which copy each behaviour came from; the
+  five deliberately-dropped behaviours with their reasons), the `BUILD_INFO`-vs-`version.html`
+  footgun on the `webappUrl` row, a new **§"What `runStatic()` returns"** (the drift check found
+  the returned-object shape documented nowhere and the install pin two minors stale), and R4's
+  guardrails written as decisions. Into `packages/gas-deploy/README.md`: **§Canonical keys** with
+  the two rules and `*Key` demoted to a legacy override, and the **anchor-declared / ID-cached**
+  reasoning with the cache's three jobs; `local.settings.example.json` carries the same
+  convention. Into `best-practices/gas-deployment/README.md`: the **two orthogonal auth axes**.
+  Then `PMIX-PLAN.md` (1176 lines) and `gas-static-frontend/RECOMMENDATION.md` (343) were deleted —
+  work-log entries and R5/R6/R7/R9 beads verified first, and each of those beads' descriptions
+  rewritten so none points at a deleted file — and `RECOMMENDATION-declared-config.md` was reduced
+  301 → 132 lines to the `LibAdmin` proposal alone, attached to `GAS-Core-hl5` from both ends.
+- Two things worth carrying forward. **§6's "open decision" was no longer open**: S14 had already
+  decided it in `adr/0002`, so it graduated as a decision rather than being preserved as a
+  question. And **`adr/0001` and `adr/0002` now cite sections of the reduced file that no longer
+  exist** — deliberately not repaired, because an accepted ADR is superseded, never edited (§4.5),
+  and the content those citations point at is now in `packages/gas-deploy/README.md`.
+- With `PMIX-PLAN.md` gone, **§6.0's restated stage contract is the only copy of the eight rules in
+  this repo** until S19 folds them into DevStandard. S19 takes them from §6.0.
 
 **v7.1 — 2026-08-24.** S7 moved from ▶ to **⏸ held** on the owner's call ("not going to do it now,
 maybe in the future"): the direct read is deferred, not declined, and ADR-0007 stands meanwhile. Its

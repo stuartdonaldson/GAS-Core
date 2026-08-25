@@ -80,6 +80,46 @@ schema**: every key is named by your own target config, which is why the package
 Anything else in the file is your project's (a `staticRepoPath` for `gas-static`, an admin
 secret, …) — the package reads only the keys its config names.
 
+#### Canonical keys — the same fact gets the same key in every project
+
+`local.settings.json` has no fixed schema, but it *is* a developer-facing interface, and a
+developer who has worked on one project in the estate should not have to re-learn it on the next.
+Four spellings of "the static repo path" is not configurability, it is drift. camelCase throughout,
+never `SCREAMING_CASE`.
+
+| Fact | Canonical key | Spellings it replaces |
+|---|---|---|
+| clasp auth file | `claspAuth` | a second Google account is a per-env override, not `nuucAuth` |
+| script project | `scriptId` (per-env only when each env is its own script project) | `testScriptId`, `templateScriptId`, `sitScriptId`, `prodScriptId`, `nuucScriptId` |
+| deployment ID (cache) | `deploymentId`, per env — **written by the deploy** | `testDeploymentId`, `sitDeploymentId`, `nuucDeploymentId` |
+| operator secret | `adminSecret` (per-env when the envs are separate script projects) | `sitAdminSecret`, `prodAdminSecret`, `webappSecret` |
+| static hosting repo | `staticRepoPath` (per-env override for a second host) | `staticPagesRepoPath`, `nuucStaticPagesRepoPath`, `staticPortalRepoPath` |
+| container | `sheetId` / `docId`, per env | `testSpreadsheetId`, `templateSpreadsheetId`, `nuucSheetId` |
+| server log directory / Drive folder / prefix | `gasLogDir`, `gasLogFolderId`, `gasLogPrefix` | `GAS_LOGGER_LOCAL_PATH`, `GAS_LOGGER_PARENT_FOLDER_ID`, `GAS_LOGGER_PROJECT_PREFIX` |
+| Axiom | `axiomDataset`, `axiomToken`, `axiomQueryToken` | already uniform |
+
+Two rules, rather than a fixed list to memorise:
+
+1. **Env-scoping is structural, not a prefix.** A fact that varies per environment is written once
+   *per environment*; a fact that is project-wide is written once. This is what removes the "does
+   this project prefix its keys or not?" question that produced `scriptId` *and* `testScriptId`
+   *and* `sitScriptId` across three repos — and it stops a project whose two deployments share one
+   script project from writing the same `scriptId` twice.
+2. **Project-specific keys are fine, as long as they do not restate a canonical concept.** A
+   project's own `initialFolderId` or test-fixture doc ID is legitimately local. A fourth spelling
+   of "the static repo" is not.
+
+The `*Key` indirection (`scriptIdKey`, `deploymentIdKey`, `secretKey`, `authKey`) stays supported
+and is how an unmigrated project keeps working, but it is a **legacy override**, not the normal way
+to configure a new project: point it at the canonical key and stop thinking about it. Env-name
+aliases stay supported too — F3Go30 calls its PROD target `template` — via `envAliases`.
+
+Which of these live in a committed file rather than the gitignored one is settled by
+[ADR-0002](../../adr/0002-declared-config-two-files.md) (two files: project truth in a committed
+`gas-project.json`, machine truth and secrets in `local.settings.json`). No project migrates on
+that ADR alone; the shape is validated inside the first conversion that touches a project's config
+anyway.
+
 ### Deployment description & the anchor
 
 Two config keys have to agree, and nothing enforces it:
@@ -106,6 +146,50 @@ describeDeployment: (version, label, target) => `${target.anchor} v${version}`,
 
 Keep run-specific data (timestamps, branch names) out of the anchor portion. The version after it
 is fine: `anchorMatch` is a substring test.
+
+**Anchor declared, deployment ID cached — and why both.** These two are not competing
+declarations of the same fact; they have different owners and different jobs.
+
+| Value | Who supplies it | Where | Required |
+|---|---|---|---|
+| **anchor** (`TEST-WEB-APP`) | the developer, once, in the description typed when creating the deployment | declared config | **yes** — it is the environment's identity |
+| **deployment ID** | the deploy, written back automatically | the gitignored cache half | **no** — populated on first deploy, never hand-entered |
+| resolver order | the package | `settingsId → anchorMatch → soleActiveDeployment` | — |
+
+Creating the deployment and typing a description is the one irreducible manual step. The anchor
+*is* that step's output, which is why it is the only environment fact that genuinely belongs to a
+human; everything else about the deployment is derivable from it.
+
+The cached ID stays anyway, as a **fallback with three distinct jobs** — none of which the anchor
+can do:
+
+1. **The no-clasp-auth path.** Anchor matching *requires* `clasp deployments`: auth plus a network
+   round trip. Without the cache, `node tools/call-webapp.js version` fails on a machine that has
+   never run `clasp login`, and in CI. `resolveEnvDeploymentId` tries the live list and falls
+   through to the stored value on any failure.
+2. **Deletion detection.** `settingsId` validates the cached ID against the live list and refuses
+   loudly — *"is not among this script project's live deployments — it was deleted or recreated"*.
+   An anchor-only project silently resolves the replacement instead. Sometimes that is what you
+   want; you should still be told it happened.
+3. **Cost.** `resolveFromLiveList: false` skips the `clasp deployments` call entirely, which is
+   what lets a version poll run a dozen requests without a dozen clasp invocations.
+
+The "two sources of truth for one fact" objection is already neutralised: the tool rewrites the
+cache after every deploy and validates it against the live list before trusting it. And no
+detection is traded away by making the anchor primary — `anchorMatch` refuses on **zero** matches
+*and* on more than one, naming every candidate, and `settingsId` refuses a vanished ID.
+
+Two conventions this requires:
+
+- **Anchors must not be substrings of one another.** `WEB-APP` matches both targets; use
+  `<ENV>-WEB-APP`. `anchorMatch` catches the collision loudly rather than guessing, but the naming
+  rule keeps it from arising.
+- **Deployment-archiving tooling must never strip or rewrite an anchored description.**
+- The package still never *creates* a deployment. A new URL stays a deliberate human decision.
+
+A project with no anchors today migrates for free: `describeDeployment` rewrites the description
+as `${anchor} v${version}` on **every** deploy, so the next deploy resolves via the cached ID,
+writes the anchored description, and anchor matching works from then on. No flag day.
 
 ### Project-specific summary rows
 

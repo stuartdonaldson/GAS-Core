@@ -73,7 +73,8 @@ function copyOthers_(config, stampedPages, outDir) {
  * Builds one env's dist/ output: stamps every page in `stampedPages` (default: every .html at
  * srcDir's root), copies everything else under srcDir verbatim, and writes the version.json
  * companion — the only thing `assertPublishedBuild` reads. No bundler, no framework, no page
- * templating: this owns the pipeline, never the page (RECOMMENDATION §4).
+ * templating: this owns the pipeline, never the page (README, "What this package deliberately
+ * does not do").
  */
 function buildEnv(config, envKey) {
   const envDef = envDefFor_(config, envKey);

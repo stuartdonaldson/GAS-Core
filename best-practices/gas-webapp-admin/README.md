@@ -3,7 +3,7 @@
 > **Proposed change:** this folder's `Admin.js` is currently a *copy-me* file, which is a drift
 > source — five projects now run five variants of this gate. See
 > [`../gas-deployment/RECOMMENDATION-declared-config.md`](../gas-deployment/RECOMMENDATION-declared-config.md)
-> §4 for the proposed `libs/LibAdmin` with a declared `ungatedActions` list (which is what keeps
+> for the proposed `libs/LibAdmin` with a declared `ungatedActions` list (which is what keeps
 > RankChoiceVoting's `setWebappUrl` first-deploy exemption expressible without a fork).
 
 ## Overview

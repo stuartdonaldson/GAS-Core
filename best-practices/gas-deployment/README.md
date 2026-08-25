@@ -1,8 +1,12 @@
 # Best Practice: GAS Web App Deployment Management
 
 > **Follow-on, proposed:** [`RECOMMENDATION-declared-config.md`](RECOMMENDATION-declared-config.md)
-> — where each fact is declared (anchor required, deployment ID cached), the admin gate as a
-> declared option with `libs/LibAdmin`, and canonical `local.settings.json` keys.
+> — the admin gate as a declared option with `libs/LibAdmin` (bead `GAS-Core-hl5`). The rest of
+> that proposal has landed: where each fact is declared and why the deployment ID stays cached is
+> in [`../../packages/gas-deploy/README.md`](../../packages/gas-deploy/README.md)
+> §"Deployment description & the anchor", the canonical `local.settings.json` keys are in the same
+> README's §"Canonical keys", the two auth axes are a section of this document, and the one-file
+> -or-two question is settled by [`adr/0002`](../../adr/0002-declared-config-two-files.md).
 
 ## Overview
 
@@ -520,6 +524,29 @@ See [`packages/gas-deploy/README.md`](../../packages/gas-deploy/README.md#cuttin
 tagging the package itself, and [`gas-cm-and-deployment/`](../gas-cm-and-deployment/README.md) for
 the `release:patch`/`minor`/`major` workflow that wraps a deploy in version governance and git
 tags.
+
+---
+
+## Two orthogonal auth axes — decide each separately
+
+Conflating these is why projects end up building the wrong gate, or neither. They answer different
+questions, are held by different parties, and protect different things.
+
+| | **Axis 1 — operator secret** (`cmd=admin`) | **Axis 2 — visitor identity** (GIS / brokered assertion) |
+|---|---|---|
+| Answers | "is this call from the project's own tooling?" | "who is the human on the page?" |
+| Held by | a developer's gitignored `local.settings.json` | the visitor's browser, verified server-side |
+| Gates | Script Properties, diagnostics, maintenance actions | feature and data access inside the app |
+| Needed when | you want scriptable operator actions instead of clicking through the editor UI | the web app is `ANYONE_ANONYMOUS` and does anything privileged |
+| Implementation | [`../gas-webapp-admin/README.md`](../gas-webapp-admin/README.md) + `gas-deploy`'s `authField` / `securedCmds` | [`../gas-static-frontend/README.md`](../gas-static-frontend/README.md) §"What a first-party page unlocks next: identity & access control" |
+
+A project may need **neither, either, or both**, and each axis is declared independently.
+**Neither is implied by adopting `gas-deploy`** — the package deploys and verifies; it does not
+decide who may call what.
+
+The trap worth naming: a project that adds an operator secret and stops there has authenticated its
+*own tooling* and nothing else. If the web app is anonymous and privileged, Axis 2 is the entire
+security boundary, and an operator secret does not touch it.
 
 ---
 

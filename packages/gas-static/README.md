@@ -4,8 +4,10 @@ The shared static-front-end build/publish/verify pipeline for Google Apps Script
 escape `HtmlService`'s sandboxed iframe. One implementation of the three steps F3Go30, RCV and
 GActionSheet each hand-copied: **stamp, publish, verify** — mirroring `gas-deploy`'s shape.
 
-Background and the drift this replaces:
-`best-practices/gas-static-frontend/RECOMMENDATION.md` §3.1.
+Why the pattern, how to port a page, and the traps:
+[`best-practices/gas-static-frontend/README.md`](../../best-practices/gas-static-frontend/README.md).
+That document owns the **page**; this package owns the **pipeline**. The drift it replaces is
+recorded in §Provenance below.
 
 The package owns the *pipeline*, never the page: no bundler, no framework, no page templating.
 Every surveyed project hand-wrote one self-contained HTML file and every one of them says that
@@ -17,7 +19,7 @@ pnpm only, same reason as `gas-deploy` (npm has never supported subdirectory git
 
 ```jsonc
 "dependencies": {
-  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.2.0&path:/packages/gas-static"
+  "gas-static": "github:stuartdonaldson/GAS-Core#gas-static-v1.3.1&path:/packages/gas-static"
 }
 ```
 
@@ -104,7 +106,7 @@ keeps.
 | `srcDir` / `distDir` | Source and per-env output directories, relative to `root`. |
 | `stampedPages` | HTML files to stamp. Default: every `.html` file at `srcDir`'s own root (not recursive). |
 | `copyAssets` | Copy everything else under `srcDir` (subdirectories included) into each env's `dist/<env>/` verbatim. Default `true`. |
-| `webappUrl` | `{ from: 'buildInfo', file, envField }`. `file` is a GAS-side version file (e.g. `src/Version.js`) carrying a `BUILD_INFO`-shaped literal; `envField` (default `'env'`) is the BUILD_INFO key checked against each env's `deployTarget`. |
+| `webappUrl` | `{ from: 'buildInfo', file, envField }`. `file` is a **server-side** GAS version file (e.g. `src/BuildInfo.js`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **bare semver**; `envField` (default `'env'`) is the BUILD_INFO key checked against each env's `deployTarget`. `from` accepts `'buildInfo'` only — [ADR-0001](../../adr/0001-webapp-url-from-build-info-only.md). **Footgun:** a project may also have a *client-side* version file (PracticeMix's `src/version.html`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **display string** (`v1.6.7.8 (Rev. …)`). Point `file` at that one and `assertPublishedBuild` compares a display string against a semver and can never pass — and the GAS runtime cannot read an `.html` file at all, so the backend is not using it either. The file this key names must be the one the deploy stamps and the server executes. |
 | `placeholders` | `{ TOKEN: (ctx) => value }` — extra project-specific tokens, substituted as raw text wherever `TOKEN` appears (not wrapped in a `var … = …;` declaration, unlike the two standard placeholders below). `ctx` is `{ env, envDef, version, webappUrl }`. |
 | `envs` | Per-env config, see below. |
 | `liveUrl` | `(env) => string` — the live base URL serving that env's `dist/` output (trailing slash optional). `assertPublishedBuild` appends `version.json`. |
@@ -125,6 +127,32 @@ var STATIC_WEBAPP_URL_ = null;      ->  var STATIC_WEBAPP_URL_ = "https://script
 Missing any stamped page's placeholder — standard or extra — is a hard failure and writes
 nothing (all three pre-package copies already worked this way; kept, and made a single
 in-memory-then-write pass so a mismatch found stamping page 2 of 2 does not leave page 1 written).
+
+## What `runStatic()` returns
+
+```js
+{
+  config,                                                  // the config as supplied, unmodified
+  build(envKey),                                           // -> { outDir, version, webappUrl, env, builtAt }
+  publish(envKey, options),                                // -> { published: true, repoRoot, dest }
+                                                           //    or { skipped: true, reason: 'no-repo-path' | 'up-to-date' | 'cancelled' }
+  assertPublishedBuild(envKey, expectedVersion, options),   // -> { ok: true, attempts, version, env, webappUrl }
+  deployHooks(options),                                    // -> gas-deploy postDeploy hooks
+  summaryRows(options),                                    // -> gas-deploy extraRows
+}
+```
+
+`publish` options: `{ yes, chained, confirmFn, log, warn, exec }`. `assertPublishedBuild` options:
+see below — the same shape as `gas-deploy`'s `verifyOptions`. `deployHooks()` and `summaryRows()`
+share state through the object `runStatic()` returned, which is why the summary can say a publish
+was skipped instead of printing a URL nobody republished; call both off the **same** pipeline
+object.
+
+The module also exports `buildEnv`, `publishEnv`, `assertPublishedBuild`, `deployHooks`,
+`summaryRows` and **`readBuildInfo_`** directly. `readBuildInfo_(file, options?)` is public on
+purpose: a consumer stamping extra placeholders off `BUILD_INFO` (a build date, say) must read that
+literal with the *same* code the pipeline reads it with — the alternative is the duplicate regex
+that had already re-diverged at the package's first consumer.
 
 ## `version.json`
 
@@ -222,13 +250,75 @@ The page must also tell the truth about version agreement at **runtime** — see
 `best-practices/gas-static-frontend/README.md` §The static page interface contract, which this
 assertion is the deploy-time half of.
 
+## Provenance — where each behaviour came from, and what was left behind
+
+This package is an extraction, not a design. F3Go30, RankChoiceVoting and GActionSheet each
+hand-wrote the same three steps and had already diverged; PracticeMix was about to become the
+fourth. Recording which copy each behaviour came from is what stops a converting project from
+re-adding something that was dropped on purpose, or re-litigating a call already settled.
+
+**Taken, and from where:**
+
+| Behaviour | Source |
+|---|---|
+| Standard placeholder stamping (`STATIC_BUILD_VERSION_`, `STATIC_WEBAPP_URL_`) and missing-placeholder-is-a-hard-failure | all three copies agreed |
+| Stamping every page **into memory first**, writing only after all succeed | **new** — none of the three did it. A two-page project used to leave page 1 written when page 2 failed. The env-agreement guard's "writes nothing" requirement forced the discipline, so it was applied uniformly |
+| `deployTarget ↔ static env` as declared config (`envs`) | generalised from RCV's per-env `DEPLOYMENT_ID_KEY`/`THEME` object and GActionSheet's `ENV_MAP` |
+| `webappUrl: { from: 'buildInfo' }` **and the env-agreement assertion** | GActionSheet's `readBuildInfo_` / `ENV_MAP.buildInfoEnv` check — the only copy that had it, and the reason this mode is the one that survived |
+| Scoped `git add` / `git status` on `dest` | RCV's and GActionSheet's, which carry the same comment: an unscoped add publishes another app's half-finished work out of a shared host repo |
+| Missing static-repo path = warn and skip | GActionSheet's posture, not F3Go30's and RCV's hard `process.exit(1)` — a fresh clone without the sibling repo should not fail a deploy |
+| Confirm before a cross-repo push | GActionSheet's `confirm()`/`--yes`, generalised to an injected `confirmFn` (the package has no UI dependency) plus `chained` for pipeline invocation |
+| `assertPublishedBuild` | **new** — none of the three read `version.json` back (RCV's own comment: "not currently read back"). Modelled on `gas-deploy`'s `assertDeployedVersion`: same poll/timeout/inject shape, pointed at the CDN instead of a `cmd=version` route |
+| `PUBLISHERS.md` ownership guard and the pre-commit rebase | **new**, from the review that followed the first conversion — see §Publish safety and [ADR-0003](../../adr/0003-publish-ownership-manifest.md) |
+
+**Deliberately not ported.** Each of these was in one of the copies and was left there:
+
+- **F3Go30's CSP meta-tag generation** (`buildCspMeta_` / `collectScriptHashes_` / `insertCsp_`).
+  A page-content concern specific to that project's PWA design, not a pipeline concern — "the
+  package owns the pipeline, never the page". It stays in F3Go30. Whether the package should grow a
+  consumer-side `transformPage(html, ctx)` hook instead is decided at F3Go30's conversion, where a
+  real second use would justify it.
+- **RCV's theme / theme-fonts / dev-contact stamping** (`devContactFromVersionJs_`) and
+  **GActionSheet's `doc.html` multi-page-per-env specifics**. Both are already expressible through
+  the generic `placeholders` map and `stampedPages` list with no package change, so hardcoding them
+  would add surface for nothing.
+- **F3Go30's and RCV's deployment-ID `webappUrl` mode** — resolving `/exec` from a
+  `local.settings.json` deployment ID with no `BUILD_INFO` round trip. Not a gap:
+  [ADR-0001](../../adr/0001-webapp-url-from-build-info-only.md) records why a binding that is
+  reconciled against nothing must not become the path of least resistance for the next consumer.
+- **F3Go30's `wait-for-static-deploy.js`** (polling the published page for a
+  `STATIC_BUILD_VERSION_` regex match) and **RCV's `smokeTestStaticApi.js` step 11**. Both are
+  superseded by `assertPublishedBuild` reading `version.json`, which asserts three fields instead of
+  scraping one out of a page body. A converting project retires them rather than keeping them
+  alongside.
+- **`static-urls.js` generalisation** (R9) — see below.
+- **The three source projects themselves.** G1 extracted the package and converted exactly one
+  consumer (PracticeMix), deliberately: converting three at once is the mistake this shape of work
+  exists to avoid. The remaining conversions are their own stages.
+
 ## What this package deliberately does not do
 
-- No bundler, no framework, no page templating.
-- No shared static "framework" or component library.
-- `static-urls.js` generalisation (R9) — not yet needed by a second consumer.
-- The brokered-identity model (R5/R6/R7) — orthogonal; see
-  `best-practices/gas-static-frontend/RECOMMENDATION.md` §3.3.
+These are guardrails, not gaps. Each one was proposed, considered, and declined; re-opening one
+needs a reason the survey of four independent implementations did not already answer.
+
+- **No bundler, no framework, no page templating.** Four projects independently hand-wrote one
+  self-contained HTML file, and every one of them says that was the right call. A build step that
+  can only substitute tokens is a build step nobody has to debug.
+- **The package owns the pipeline, never the page.** Anything about the page's *content* —
+  CSP meta generation, themes, fonts, component markup — stays in the consumer, expressed through
+  `placeholders` and `stampedPages` if it needs build-time values at all.
+- **No shared static "framework" or component library.**
+- **Not folded into the demo harness.** A `webapp-html` kind rendered through
+  `HtmlService.createTemplateFromFile()` is fine for a lightweight internal demo page, but it is
+  a different and lesser thing: this pattern exists specifically to escape the sandboxed iframe,
+  and a demo running *inside* one cannot demonstrate it.
+- `static-urls.js` generalisation (R9, bead `GAS-Core-hek`) — declaring the static base URL once,
+  GAS-side, and reading it back from Node tooling. Not yet needed by a second consumer; decided at
+  F3Go30's conversion, which is the second consumer that would justify it.
+- The brokered-identity model (R5/R6/R7 — beads `GAS-Core-l81`, `GAS-Core-na8`) — orthogonal to
+  the pipeline, and a page/backend concern rather than a build one; see
+  [`best-practices/gas-static-frontend/README.md`](../../best-practices/gas-static-frontend/README.md)
+  §"Two identity models — pick deliberately".
 - A standalone CLI (`bin/`) — no consumer runs build/publish outside `deployHooks()` yet. F3Go30 and
   GActionSheet do today with their own scripts; whether this package should own that path is decided
   at the RCV/F3Go30 conversions (PLAN2 S17), where a second consumer's actual usage settles it,

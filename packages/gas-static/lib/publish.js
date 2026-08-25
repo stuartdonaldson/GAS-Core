@@ -25,8 +25,9 @@ function copyDir_(src, dest) {
 }
 
 /**
- * Publishes one env's built dist/ output into its sibling static-hosting repo, per
- * RECOMMENDATION §3.1's one policy for the two divergences:
+ * Publishes one env's built dist/ output into its sibling static-hosting repo. The three
+ * pre-package copies disagreed on two points; the policy each one resolves to (README
+ * §Provenance records which copy each came from):
  *
  *   - missing repo path (envDef.repoKey unset in local.settings.json) = warn and skip, not a
  *     hard failure — a fresh clone without the sibling repo checked out should still deploy;
