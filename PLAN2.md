@@ -775,41 +775,27 @@ Recorded so a later reader does not re-open settled questions:
 ### 6.0 How this section is used
 
 Work is executed as numbered **stages**. A stage is the unit a session claims, closes and hands
-off. The rules are PMIX-PLAN §6's stage contract (F21), restated here because that file is due for
-deletion:
+off. **The rules are `$DEVSTANDARD/doc-framework/planning-guide.md` §"Pattern D: Staged Execution"
+(the nine-rule stage contract) — cited, not restated**, since 2026-08-25's conversion of this
+section's open stages to that pattern (`staged-plan` skill, S19). The history of how rule 9 (the
+deferral-to-prose leak) was found is kept below because it is this project's own audit record, not a
+restatement of the rule itself:
 
-1. Claim the stage's bead(s) first; if a bead does not exist, file it before starting.
-2. Invoke the `implementation-gate` skill before writing implementation code.
-3. Tests before the change where the stage changes behaviour.
-4. **Do not widen the stage.** Anything discovered outside its AC becomes a new bead or a new stage,
-   never an in-flight addition.
-5. Paste real gate/test/command output into the handoff notes — not a summary of it.
-6. Write the handoff notes into the bead **and** into this document's stage block before closing.
-7. No commit without explicit authority — **except** where the stage's AC says otherwise. From S1
-   onward the default is inverted: each stage ends committed and pushed, per `CLAUDE.md` §Session
-   Completion. S1 exists to make that possible.
-8. Record blockers explicitly and finish the unblocked remainder of the stage.
-9. **A deferral to a later stage is written into that stage's AC checklist at the moment of
-   deferring, or filed as a bead. Naming a successor stage in handoff prose is not a handoff.**
-   Added 2026-08-25 after an audit of every closed stage found this to be the contract's one leak:
-   three items (`GAS-Core-geq`, `GAS-Core-rgc`, `GAS-Core-d5t`) were deferred to a named later
-   stage whose AC — written earlier — did not know about them, and survived only as a paragraph
-   nobody re-read at that stage's close. Everything deferred *as a bead*, or written into a
-   successor's AC list, survived. S19 carries this into the DevStandard version.
+Added 2026-08-25 after an audit of every closed stage found the contract's one leak: three items
+(`GAS-Core-geq`, `GAS-Core-rgc`, `GAS-Core-d5t`) were deferred to a named later stage whose AC —
+written earlier — did not know about them, and survived only as a paragraph nobody re-read at that
+stage's close. Everything deferred *as a bead*, or written into a successor's AC list, survived.
+This is now rule 9 of Pattern D's stage contract, generalised beyond this project.
 
-**A stage closes only when every AC box in it is checked.** A stage with an unchecked box is ▶, not
-✅, regardless of how much of it is done. Partial completion is recorded by checking the boxes that
-are genuinely met and leaving the rest, with a note in *Handoff* naming what is left and why.
+**For closed (✅) stages below:** the original shape stands — Goal / Findings / Depends on / AC
+(checkboxes, closed only when every box is checked) / Handoff / Next prompt — left as-authored
+rather than retrofitted.
 
-Each stage block carries:
-
-- **Goal** — one sentence.
-- **Findings** — which §3 findings it discharges.
-- **Depends on** — stages that must be ✅ first.
-- **AC** — checkbox list; every box must be objectively checkable by a reader who was not there.
-- **Handoff** — filled in *at close*: what was done, what was found, what the next stages must know,
-  what was deliberately not done.
-- **Next prompt** — the literal instruction to open the following session with.
+**For open and held stages (S7, S13, S15–S19, and `GAS-Core-e5z`):** AC, model and batch grouping
+now live on the bead (`bd show <id>`), per Pattern D's split — this document no longer hand-maintains
+them. Each such stage's block below still carries **Goal**, **Depends on**, and **Handoff** (filled
+at close, into the bead *and* here), plus a **Next prompt**; its **AC** section says "see bead" rather
+than restating checkboxes.
 
 **Next prompts assume §6.1's index order; §6.3's batching overrides them.** Where a session covers
 two stages (A, C, G, H, M), run the second stage in the same session and skip the intervening next
@@ -817,6 +803,14 @@ prompt — then pick up the chain at the first stage that is still ○. §6.1's 
 is the authority on which stages share a session.
 
 ### 6.1 Stage index
+
+**Mixed shape, deliberately.** Closed (✅) stages below keep the original Title/Findings/Pri/Status/
+Depends-on/Session·model shape — cheap to leave alone, and re-deriving a Deliverable line for
+finished work has no reader benefit. Open and held stages use the Pattern D shape
+(`doc-framework/planning-guide.md` §"Staged Execution" → Stage listing): **Stage | Beads | Deliverable
+| Work-log**. AC, the model, and batch grouping for every open/held stage now live on the bead
+(`bd show <id>`) — they are no longer restated here. §6.3 still carries the *why* of the grouping and
+the anti-pairings, which is not a bd field.
 
 | Stage | Title | Findings | Pri | Status | Depends on | Session · model |
 |---|---|---|---|---|---|---|
@@ -827,20 +821,25 @@ is the authority on which stages share a session.
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ✅ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ✅ | S1, S2 | **E** · Opus, solo |
-| **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ⏸ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ✅ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ✅ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
 | **S11** | Retire the copy-me scripts | F11 | P1 | ✅ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ✅ | S6, S8, S9, S11 | **H** · Opus |
-| **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | ~~S7~~ (discharged — S7 changed no audio code) | **I** · Sonnet, solo |
 | **S14** | Decide one config file or two | F15 | P2 | ✅ | S2 | **C** · Opus |
-| **S15** | Convert RankChoiceVoting | F7a | P1 | ○ | S8, S14 | **J** · Opus, solo |
-| **S16** | Convert GActionSheet | F7b | P1 | ○ | S15 | **K** · Sonnet, solo |
-| **S17** | Convert F3Go30; settle CSP/CLI/`from:'resolve'` | F7c | P1 | ○ | S5, S16 | **L** · Opus, solo |
-| **S18** | Extract `libs/LibIdentity` | F12 | P1 | ○ | PracticeMix P6 | **M** · Sonnet |
-| **S19** | Stage contract → DevStandard | F21 | P3 | ○ | S12 | **M** · Sonnet |
-| — | Retire the `postFn` override | F9 | — | ⏸ | *revisit at the next `gas-deploy` breaking change* | — |
+
+**Open and held stages** (bead is authoritative for AC/model/batch; labels applied 2026-08-25):
+
+| Stage | Beads | Deliverable | Work-log |
+|---|---|---|---|
+| `S7` | `GAS-Core-emk` — PracticeMix: direct Drive read primary, base64 fallback (F16) | ⏸ Held on the owner's call (`human` label; `bd human list`). Spike is done and permanent (3 Playwright specs); implementation is blocked on two owner decisions (API key/GCP project; link-sharing the practice-track folders), not on more engineering. Nothing to see unless those decisions change. | per-stage |
+| `S13` | `GAS-Core-gne` — PracticeMix P5b: PROD deploy, `pub/pmix`, start retirement clock | The first real PracticeMix PROD URL a user could open, plus the retirement-clock start date for the old Playwright-session transport. | per-stage |
+| `S15` | `GAS-Core-d7i` — Convert RankChoiceVoting to `gas-static` | RCV's build/publish pipeline moves onto the shared package; validates ADR-0002's two-file config shape against a real second consumer before it is trusted for S16/S17. | per-stage |
+| `S16` | `GAS-Core-rgh` — Convert GActionSheet to `gas-static` | Second conversion; confirms the env-agreement guard GActionSheet contributed to the package is still enforced once it stops owning its own build script. | per-stage |
+| `S17` | `GAS-Core-hek` — Convert F3Go30; settle CSP/static-urls/`from:'resolve'`+CLI | Last conversion, and the one that forces three still-open package-shape decisions (CSP hook, `static-urls.js`, standalone CLI) to a recorded answer — worth reading even if the conversion itself is routine. | per-stage |
+| `S18` | `GAS-Core-f3d` — Extract `libs/LibIdentity` from PracticeMix's verifier (F12) | Collapses the sixth copy of the identity verifier into a shared library with a declared allowlist option — the kind of change other packages' admin-gate code will want to copy. | batched with S19 |
+| `S19` | `GAS-Core-dof` — Validate and land the `staged-plan` skill (F21) | **Re-scoped 2026-08-25** (see §8 v7.5 and `HANDOFF-0825.md` §6) — no longer "fold the contract into DevStandard" (Pattern D already did that outside a stage); now "does the `staged-plan` skill actually work," with this PLAN2 conversion as the test case and its friction report as the deliverable. | batched with S18 |
+| — | `GAS-Core-e5z` — retire the `postFn` transport override (F9) | ⏸ Held (`human` label). Not a numbered stage; blocked on `GAS-Core-vo3` (PracticeMix's `ANYONE_ANONYMOUS` manifest flip), an owner-visible product decision, not engineering. | per-stage |
 
 ---
 
@@ -1313,26 +1312,12 @@ spike first, exactly as P0 did, because assumed Google CORS behaviour has alread
 
 **Depends on:** S2 (PracticeMix `adr/` and the superseding ADR from S6 are the destination)
 
-**AC — spike (must close before implementation begins)**
-
-- [ ] One real track fetched from `127.0.0.1` against the Drive API + API-key URL; response CORS headers pasted. — **partially: recorded as refuted/blocked.** Four candidate URLs were probed from a real browser at `127.0.0.1`; the two keyless Drive download hosts reject before any body is readable and the API host is CORS-open but refuses without a key. The key-bearing fetch is the one thing not run, for want of a key — see *Blockers*.
-- [ ] `decodeAudioData()` confirmed to succeed on the fetched buffer. — **blocked with the same cause**; the decode harness is written and runs (`window.fetchAndDecode`), and the spec exercising it skips loudly with `no DRIVE_API_KEY in env` rather than passing silently.
-- [x] Range-request support confirmed or refuted; result recorded. — **recorded:** `drive.usercontent` honours `Range` (`206` + `Content-Range`) for a request `curl` can make, which is moot because a browser cannot make that request at all; `drive/v3` range support is untested for the same missing key.
-- [x] Spike result written into *Handoff* **before** any implementation edit. — no implementation edit was made; the audio path is untouched.
-
-**AC — implementation**  *(blocked; see *Blockers*. The premise these were written on — "the files are link-shared" — is false for 11 of 14 files.)*
-
-- [ ] Drive API enabled in the script's GCP project; API key created, restricted to the Drive API and referrer-restricted to the Pages origin.
-- [ ] The key is stamped as a build-time placeholder or served from `cmd=version` — never hand-edited into source.
-- [ ] `loadTrackFile()` tries the direct read and falls back to `getFileAsBase64` on any failure; the fallback path remains complete and tested.
-- [ ] A fallback occurrence is **visible** (log line at minimum), so a per-file sharing gap does not present as "the app is slow today".
-- [x] Per-file sharing inheritance verified for files *moved* into the folder as well as uploaded ones; result recorded. — **done, and it is the stage's main finding:** 3 of 14 readable anonymously; see *Handoff*.
-- [ ] Both paths measured on a real multi-megabyte track; the delta P1R could not record is pasted into *Handoff*. — **not measurable:** every multi-megabyte track in the tree is restricted, so there is no file on which both paths can be run.
-- [ ] `src/Code.js:352`'s comment block amended to distinguish the forbidden owner-token routes from this file-ID path.
-- [ ] A PracticeMix ADR supersedes **ADR-0007** (the current head of ADR-0001's chain, written in S6) with the end position, carrying P1R's measurements and this spike's result. — **discharged differently, deliberately:** ADR-0007 is *not* superseded, because the spike did not change the end position it records — base64 remains the only path. What did change is the reason, and the new decision behind it is recorded as PracticeMix **ADR-0008** (no OAuth consent screen), which is what makes ADR-0007 stand rather than fall.
-- [x] `atc-t6w` (P6) amended: the gated-`getFileDownloadInfo` question dropped as moot; the two-sided nature of any future tightening (app ACL **and** Drive sharing) recorded in P6's scope.
-- [x] The generalisable half written into `best-practices/gas-static-frontend/README.md` as pattern content — including that the file IDs then *are* the access boundary.
-- [x] Committed and pushed.
+**AC — see bead `GAS-Core-emk`** (`bd show GAS-Core-emk`); the annotated spike + implementation
+checklist is authoritative there, not here. Summary for a reader who wants it without leaving this
+doc: spike closed 2 of 4 items (range-request result, and recording the spike before any
+implementation edit); the other 2 (a live key-bearing fetch, `decodeAudioData()` on its result) are
+blocked for want of an API key. Implementation is blocked on the same key plus a link-sharing
+decision — see *Deferred* below and the *Handoff* Found items for the detail.
 
 **Deferred — owner's call, 2026-08-24: "not going to do it now, maybe in the future."** The spike
 stands as the record; the implementation is not declined, it is parked. Two conditions gate a
@@ -1982,15 +1967,7 @@ counting until it exists.
 
 **Depends on:** S7
 
-**AC**
-
-- [ ] PROD backend deployed; `assertDeployedVersion` green with S9's settle-on-N.
-- [ ] `pub/pmix` registered in `Static/PUBLISHERS.md` (S4) before the first publish.
-- [ ] Static page published to `pub/pmix`; `assertPublishedBuild` green on `version`, `env` and `webappUrl` (S8).
-- [ ] The live PROD static URL loads and completes one real end-to-end action; evidence pasted.
-- [ ] The retirement clock started: the `doGet.start` non-test-client count is being recorded, with day 0 stated.
-- [ ] `atc-mta` and `GAS-Core-vo3` closed.
-- [ ] Committed and pushed.
+**AC — see bead `GAS-Core-gne`** (`bd show GAS-Core-gne`).
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
@@ -2065,17 +2042,7 @@ an unvalidated one.
 
 **Depends on:** S8, S14
 
-**AC**
-
-- [ ] RCV's `tools/build-static-pages.js` and `publish-static-pages.js` deleted; the pipeline runs through `gas-static` with `deployHooks()` + `summaryRows()`.
-- [ ] Converted to Mode A: `resolveBeforeStamp: true` + a server-side `BUILD_INFO` literal; **no** `from: 'deploymentId'` mode added to the package.
-- [ ] Theme, theme-fonts and dev-contact placeholders expressed through the generic `placeholders` config with no package change.
-- [ ] `smokeTestStaticApi.js` step 11 removed as subsumed by `assertPublishedBuild`.
-- [ ] RCV repinned to current `gas-deploy` and `gas-static` tags.
-- [ ] A full deploy + publish run green against RCV's test env; summary output pasted, including S9's version row.
-- [ ] S14's config shape adopted here; any change it needed is recorded and the ADR amended or superseded accordingly.
-- [ ] `measure-first-paint.js` elevated to `best-practices/` now that a second project can use it (F14's deferred half).
-- [ ] Committed and pushed in both repos.
+**AC — see bead `GAS-Core-d7i`** (`bd show GAS-Core-d7i`).
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
@@ -2091,14 +2058,7 @@ an unvalidated one.
 
 **Depends on:** S15
 
-**AC**
-
-- [ ] `scripts/build-static-portal.js` and `publish-static-portal.js` deleted; pipeline runs through `gas-static`.
-- [ ] `index.html` + `doc.html` handled by `stampedPages`; the asset tree by `copyAssets`; `sit`/`prod` mapped to deploy targets via `envs[].deployTarget` — all with **no** package change, or the package change is recorded and justified.
-- [ ] The env-agreement guard it originally contributed is demonstrably active again (a deliberate mismatch fails; output pasted).
-- [ ] Both `pub/AS` and `pub/AS-sit` entries present in `Static/PUBLISHERS.md` and validated by the publish.
-- [ ] Repinned to current tags; full deploy + publish green for both envs.
-- [ ] Committed and pushed in both repos.
+**AC — see bead `GAS-Core-rgh`** (`bd show GAS-Core-rgh`).
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
@@ -2114,15 +2074,7 @@ an unvalidated one.
 
 **Depends on:** S5, S16
 
-**AC**
-
-- [ ] The CSP question decided: either a consumer-side `transformPage(html, ctx)` hook lands in `gas-static`, or CSP generation stays in F3Go30's tooling — decision recorded as a GAS-Core ADR either way.
-- [ ] R9 (`static-urls.js`) decided with a second consumer to justify it; recorded.
-- [ ] F3Go30 asked whether the standalone-build capability is genuinely needed. If yes, `from: 'resolve'` is implemented (calling the same `resolveEnvDeploymentId` chain, refusing a vanished deployment) **and** the CLI is built; if no, both are closed as declined. One decision, recorded either way.
-- [ ] `tools/build-static-pages.js`, `publish-static-pages.js`, `wait-for-static-deploy.js` retired or explicitly retained with a stated reason.
-- [ ] Repinned to current tags; full deploy + publish green.
-- [ ] `packages/gas-static/README.md` §Provenance updated — the deliberately-dropped list is now settled rather than pending.
-- [ ] Committed and pushed in both repos.
+**AC — see bead `GAS-Core-hek`** (`bd show GAS-Core-hek`).
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
@@ -2140,42 +2092,37 @@ before, which is the "interface with no user" mistake G1 avoided.
 
 **Depends on:** PracticeMix P6
 
-**AC**
-
-- [ ] `libs/LibIdentity` extracted from **PracticeMix's** `src/Identity.js` and its 26 tests, not from `gas-backend-example.js`.
-- [ ] Allowlist posture is a declared option (`emptyAllowlistMeans: 'anyone-verified' | 'nobody'`), not a semantic a copy must remember to invert.
-- [ ] All 26 denial-branch tests ported and green, including tokeninfo-outage-denies, denial reason never on the wire, token never logged or keyed on.
-- [ ] PracticeMix consumes the library; its local copy deleted.
-- [ ] `GAS-Core-na8` closed; `GAS-Core-hl5` (`LibAdmin`) confirmed to follow the same rule — extract at the next admin-gate touch, not speculatively.
-- [ ] Committed and pushed in both repos.
+**AC — see bead `GAS-Core-f3d`** (`bd show GAS-Core-f3d`).
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
 **Next prompt**
-> S18 is closed. Open S19, the last stage: fold the eight-rule stage contract into DevStandard's
-> `doc-framework/planning-guide.md` as a named "staged plan contract", citing this exercise as the
-> evidence.
+> S18 is closed. Open S19 (already batched with this session per §6.3) — see S19's re-scoped AC on
+> `GAS-Core-dof`: validate the `staged-plan` skill and cite this conversion as its evidence.
 
 ---
 
-### S19 — Stage contract → DevStandard  *(F21 · P3 · ○)*
+### S19 — Validate and land the `staged-plan` skill  *(F21 · P3 · ○ — re-scoped 2026-08-25)*
+
+**Original scope superseded.** S19 was "fold the eight-rule stage contract into DevStandard's
+`planning-guide.md`." Pattern D (`doc-framework/planning-guide.md` §"Staged Execution") already did
+that, outside a stage, as a deliberate rule-4 widening — see `HANDOFF-0825.md` §2 and §6. What
+remained was the trigger question (`HANDOFF-0825.md` §4a: does a skill reliably fire, or is a plan
+document as invisible as PMIX-PLAN was) — the `staged-plan` skill is that mechanism, and this PLAN2
+conversion (S7/S13/S15–S19 retrofitted to Pattern D's shape) is its first real exercise.
 
 **Depends on:** S12
 
-**AC**
-
-- [ ] The eight rules land in DevStandard's `doc-framework/planning-guide.md` as a named "staged plan contract" (fallback, only if DevStandard is rejected as a target: `GAS-Core/docs/staged-plan-contract.md` — state which and why).
-- [ ] The evidence is cited: 8 stages across two repos; two superseded-but-preserved stages; four defects filed rather than folded in; zero scope drift.
-- [ ] Rule 6 (handoff notes into the bead **and** the plan, each stage naming what its notes must contain) is called out as the rule that made this review possible.
-- [ ] Filed in DevStandard's own tracker, not GAS-Core's.
-- [ ] Committed and pushed.
+**AC — see bead `GAS-Core-dof`** (`bd show GAS-Core-dof`) — re-scoped along with this stage; the old
+AC (land the contract text in DevStandard) is superseded, not merely amended.
 
 **Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
 
 **Next prompt**
-> S19 closes PLAN2. Review the remaining held item (F9, the `postFn` override) against whether
-> `gas-deploy` has taken a breaking change since; if it has, retire the override on that bump. Then
-> delete this document, since its findings now live in the artifacts each stage named.
+> S19 closes PLAN2. Review the remaining held item (F9, the `postFn` override, bead `GAS-Core-e5z`,
+> `human` label) against whether `gas-deploy` has taken a breaking change since; if it has, retire the
+> override on that bump. Then delete this document, since its findings now live in the artifacts each
+> stage named.
 
 ---
 
@@ -2212,6 +2159,13 @@ anyway rather than being scheduled on their own.
 
 19 stages do **not** mean 19 sessions. The grouping below packs stages that share context and
 separates the ones that compete for it.
+
+**For open/held stages (I, J, K, L, M below), this table's *Stages* and *Model* columns are now
+advisory, not authoritative.** They were retrofitted onto the beads 2026-08-25 as `batch:<n>-<name>`
+and `model:sonnet`/`model:opus` labels (`bd label list <id>`; `bd list --label batch:8-I` reproduces
+a grouping without reading this table) — Pattern D's split says a bead field, once it exists, is the
+source of truth. What this table still holds that a bead field cannot is the *why*: the rationale
+column and the anti-pairings below.
 
 **The Sonnet test:** a stage runs on Sonnet when its AC are *closed-form* — the decision is already
 made in §3 and the AC asks only for execution plus evidence. A stage stays on Opus when its AC
@@ -2285,6 +2239,25 @@ from findings to the records that already exist, and the raw material for that f
 ---
 
 ## 8. Revision log
+
+**v7.5 — 2026-08-25.** Not a stage — the first real exercise of the new `staged-plan` skill (see
+`HANDOFF-0825.md`), converting this section's seven open/held stages (S7, S13, S15–S19) plus
+`GAS-Core-e5z` (F9) to Pattern D's split. Moved every open stage's AC checklist from PLAN2 prose onto
+its bead (`bd update --acceptance`), inverting the old "See PLAN2.md §6, do not restate AC here"
+convention — the bead is now authoritative for AC on these stages, and §6.1/each stage block point at
+it rather than repeat it. Applied `batch:<n>-<name>` and `model:sonnet`/`model:opus` labels from
+§6.3's existing session table (I→8, J→9, K→10, L→11, M→12; verified no batch carries inconsistent
+`model:` labels). Applied the `human` label to the two decisions this plan had only ever parked in
+prose — S7's held implementation (`GAS-Core-emk`) and F9's held retirement (`GAS-Core-e5z`) — taking
+`bd human stats` from `Total: 0` to `Total: 2`. Rewrote §6.1's open/held rows into the Pattern D stage
+listing (Stage | Beads | Deliverable | Work-log); left closed stages in the original shape rather than
+retrofitting finished work. Re-scoped **S19** (`GAS-Core-dof`): its original goal — fold the stage
+contract into DevStandard — was superseded ahead of it by Pattern D landing outside a stage; S19 now
+reads "validate and land the `staged-plan` skill," with this conversion as its own evidence. This is a
+recommendation the owner can reject; see the session's friction report. No AC *content* changed for
+S13/S15–S18 or `GAS-Core-e5z` — only its location moved. §6.0 now cites Pattern D instead of restating
+the nine-rule contract; the rule-9 audit history stays, since it is this project's own record, not the
+rule text.
 
 **v7.4 — 2026-08-25.** Post-Session-H debt audit, not a stage. Every closed stage's
 *Deliberately not done* and *Found* blocks were cross-referenced against the open bead list. Four
