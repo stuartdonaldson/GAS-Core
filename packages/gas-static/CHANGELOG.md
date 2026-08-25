@@ -1,5 +1,11 @@
 # Changelog — gas-static
 
+## 1.3.1
+
+- Exports `readBuildInfo_` from the package index. 1.3.0 made the reader correct but left it
+  reachable only through `lib/`, which would have kept its first consumer on a private path — the
+  same coupling the duplicate regex it replaces came from.
+
 ## 1.3.0
 
 - **`assertPublishedBuild` asserts all three fields `version.json` carries** (PLAN2 F6), not just

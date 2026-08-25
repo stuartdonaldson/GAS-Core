@@ -10,6 +10,7 @@
 const { buildEnv } = require('./lib/build.js');
 const { publishEnv } = require('./lib/publish.js');
 const { assertPublishedBuild } = require('./lib/assert.js');
+const { readBuildInfo_ } = require('./lib/buildInfo.js');
 const { deployHooks, summaryRows } = require('./lib/deploy.js');
 
 function runStatic(config) {
@@ -33,4 +34,9 @@ function runStatic(config) {
   return pipeline;
 }
 
-module.exports = { runStatic, buildEnv, publishEnv, assertPublishedBuild, deployHooks, summaryRows };
+// readBuildInfo_ is exported because a consumer that stamps extra placeholders off BUILD_INFO
+// (PracticeMix's buildDate) must read that file with the SAME code the pipeline reads it with —
+// the alternative is the duplicate regex F13 was filed about.
+module.exports = {
+  runStatic, buildEnv, publishEnv, assertPublishedBuild, deployHooks, summaryRows, readBuildInfo_,
+};
