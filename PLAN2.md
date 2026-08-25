@@ -1610,6 +1610,13 @@ that it is behind.
   `AXIOM_DATASET: server="(unset)" vs local="nuuts-mix"`. That is PracticeMix's own script
   comparing script properties, not `gas-deploy`. Not touched, not filed — flagged here so the next
   session does not read it as fallout from the repin.
+- **The CI tag guard did not run for either v1.3.0 tag.** Both were pushed together in one
+  `git push --tags`, and GitHub created no workflow run for either ref — confirmed against the
+  Actions API (`gas-static-v1.3.1`, pushed alone two minutes later, did run). S3's guard is
+  therefore skippable by accident, in exactly the case it exists for. Nothing was mis-tagged:
+  `scripts/check-tag-version.js` was run locally for both tags before the push, and both passed.
+  Out of this stage's AC, so **filed, not fixed**: `GAS-Core-3at` (P2), which names moving the check
+  into the push-to-master job as the only option that cannot be forgotten.
 - **PracticeMix's `.beads` export is inconsistent**: `bd` refuses auto-export because
   `issues.jsonl` holds two JSONL-only records absent from Dolt (`atc-4fk`, `atc-ohj`). The bead
   filed in S8 (`atc-66m`) is in the Dolt store and visible to `bd list`; only the JSONL export is
