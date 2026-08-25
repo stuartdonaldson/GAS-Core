@@ -1,8 +1,8 @@
 # PLAN2 — post-PracticeMix review of the shared packages and best practices
 
-**Doc version:** 7.1 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
-**Revised:** 2026-08-24 (v7.1 — S7's spike ran and refuted F16's premise; the implementation is
-held, not declined; see §8) · **Scope:** GAS-Core
+**Doc version:** 7.2 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
+**Revised:** 2026-08-25 (v7.2 — Session G closed S8 and S9; F6, F8, F10 and F13 discharged; see §8)
+· **Scope:** GAS-Core
 `packages/`, `libs/`, `best-practices/`, and the estate that consumes them (F3Go30,
 RankChoiceVoting, GActionSheet, NUUC-Dispatch, PracticeMix).
 
@@ -815,8 +815,8 @@ is the authority on which stages share a session.
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ✅ | S1, S2 | **E** · Opus, solo |
 | **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ⏸ | S2 | **F** · Opus, solo |
-| **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
-| **S9** | Propagation and pin visibility | F8, F10 | P1 | ○ | S3, S5 | **G** · Sonnet |
+| **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ✅ | S3 | **G** · Sonnet |
+| **S9** | Propagation and pin visibility | F8, F10 | P1 | ✅ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
 | **S11** | Retire the copy-me scripts | F11 | P1 | ○ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
@@ -1437,7 +1437,7 @@ project); it avoids the consent screen, not the project.
 
 ---
 
-### S8 — Version agreement: reader, assertion, page contract  *(F13, F6 · P1 · ○)*
+### S8 — Version agreement: reader, assertion, page contract  *(F13, F6 · P1 · ✅)*
 
 **Goal:** make the single reader three more consumers are about to depend on correct, and make
 version agreement true at runtime as well as at deploy time.
@@ -1446,25 +1446,86 @@ version agreement true at runtime as well as at deploy time.
 
 **AC — F13**
 
-- [ ] `readBuildInfo_`'s regex is scoped to the `BUILD_INFO` literal; a comment or a second `"name": "…"` above it can no longer win. Test proves it.
-- [ ] The reader returns every field found, `buildDate` included.
-- [ ] PracticeMix's three-line duplicate regex deleted and replaced by the package reader.
+- [x] `readBuildInfo_`'s regex is scoped to the `BUILD_INFO` literal; a comment or a second `"name": "…"` above it can no longer win. Test proves it.
+- [x] The reader returns every field found, `buildDate` included.
+- [x] PracticeMix's three-line duplicate regex deleted and replaced by the package reader.
 
 **AC — F6 half 1 (deploy-time)**
 
-- [ ] `assertPublishedBuild` accepts `{ expectedEnv, expectedWebappUrl }`, both defaulted from the config and the resolved deployment.
-- [ ] Each mismatch fails with the same "published pointing somewhere real" message the build-time guard uses.
-- [ ] `test/assert.test.js` covers mismatch on `version`, on `env`, and on `webappUrl` independently.
-- [ ] A `dist/prod` published into a `test` dest is demonstrated to fail.
+- [x] `assertPublishedBuild` accepts `{ expectedEnv, expectedWebappUrl }`, both defaulted from the config and the resolved deployment.
+- [x] Each mismatch fails with the same "published pointing somewhere real" message the build-time guard uses.
+- [x] `test/assert.test.js` covers mismatch on `version`, on `env`, and on `webappUrl` independently.
+- [x] A `dist/prod` published into a `test` dest is demonstrated to fail.
 
 **AC — F6 half 2 (runtime contract)**
 
-- [ ] `best-practices/gas-static-frontend/README.md` carries the six-point static page interface contract as a numbered requirement list, naming F3Go30 as the reference implementation.
-- [ ] PracticeMix's gaps against it (requirements 2, 3, 4, 6) are filed as beads with the contract cited — or closed in this stage; state which in *Handoff*.
-- [ ] `gas-static` version bumped and tagged; CHANGELOG updated (S5's file).
-- [ ] Committed and pushed.
+- [x] `best-practices/gas-static-frontend/README.md` carries the six-point static page interface contract as a numbered requirement list, naming F3Go30 as the reference implementation.
+- [x] PracticeMix's gaps against it (requirements 2, 3, 4, 6) are filed as beads with the contract cited — or closed in this stage; state which in *Handoff*.
+- [x] `gas-static` version bumped and tagged; CHANGELOG updated (S5's file).
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+
+**Done:**
+
+- `lib/buildInfo.js` rewritten. `literalBody_()` brace-matches the `BUILD_INFO = { … }` literal
+  (string-aware) and fields are read **only** from inside it; a file with no such literal now
+  throws by name instead of returning three empty strings. Every string field is returned, with
+  `version`/`webappUrl`/`env` always present so existing callers need no guards. Optional
+  `options.literalName`. New `test/buildInfo.test.js`, 9 tests, including decoys above *and* below
+  the literal and GActionSheet's "literal followed by functions that reference it" shape.
+- `lib/assert.js`: `assertPublishedBuild` now asserts `env` and `webappUrl` alongside `version`.
+  Defaults — `expectedEnv` = the env being asserted, `expectedWebappUrl` = `BUILD_INFO`'s
+  `webappUrl`; `null` opts either out. **The two disagreements are handled differently and that is
+  the design point:** a `version` mismatch keeps polling (it is propagation), an `env`/`webappUrl`
+  mismatch *on a page already serving the right version* fails on the first read, because a wrong
+  build in the right place never converges. Where the default cannot be resolved the poller logs
+  "webappUrl is not being asserted" rather than silently checking two fields instead of three.
+- `lib/deploy.js`: the verify hook now passes the env and `/exec` URL **the build step just
+  resolved** (`state.built`), so the two hooks cannot be talking about different builds.
+- `best-practices/gas-static-frontend/README.md` §"The static page interface contract" — the six
+  requirements, each with the F3Go30 mechanism that satisfies it named (`applyVersionState_`,
+  `formatVersionFooter_`, `isUpdateAvailable_`, `go30UpdateDismissed`, `clientVersion` on every
+  POST), and the deploy-time/runtime split stated up front.
+- PracticeMix repinned to `gas-static v1.3.1` + `gas-deploy v1.3.0`; `tools/static-pages.js`'s
+  `buildInfoField_` is now three lines over the package reader instead of a copy of its regex.
+- Released **`gas-static v1.3.0`**, then **v1.3.1** (see *Found*). Both tagged and pushed;
+  `scripts/check-tag-version.js` green for both.
+
+**Found:**
+
+- **The reader was not exported.** v1.3.0 made `readBuildInfo_` correct but left it reachable only
+  through `lib/`, which would have put its first consumer on a private path — the same coupling the
+  duplicate regex came from. Fixed in **v1.3.1**, which is what PracticeMix pins. A published tag
+  was not moved; the surface gap got its own patch release.
+- **PracticeMix meets 2 of the 6 contract requirements.** Confirmed by reading the page, not
+  inferred: 1 (the footer paints at load from `BUILD_INFO.version`, `index.html:4815`) and 5
+  (`unbuilt (local)`, `index.html:1302`). Requirements **2, 3, 4 and 6 are unmet** — no response
+  carries the server version, so there is nothing to compare, no banner, no version-keyed
+  dismissal, and no `clientVersion` on POSTs. **Filed, not closed:** PracticeMix bead **`atc-66m`**
+  (P1), citing the contract by section and naming the two requirements already met so the next
+  session does not re-derive them.
+- The `dist/prod`-into-a-`test`-dest case is demonstrated by unit test, and the test also asserts
+  **no sleep happened** — the fast-fail is part of the behaviour, not incidental.
+
+**Next stages must know:**
+
+- `readBuildInfo_` now **throws** on a file with no `BUILD_INFO` literal where it used to return
+  empty strings. The three conversions (S15/S16/S17) hit this: RCV and F3Go30 have no stamped
+  `BUILD_INFO` until they adopt `resolveBeforeStamp`, so the error they will see is the new named
+  one, which is the intended failure and reads correctly.
+- `assertPublishedBuild`'s `expectedEnv` default is the **static env key**, matching what
+  `buildEnv` writes into `version.json`. A consumer whose static env key differs from the value it
+  wants in `version.json` must pass `expectedEnv` explicitly.
+- The contract section is where S11's rewrite of that README must keep landing — F11's plan is to
+  fold `PUBLISHERS.md` and the config example into the same document.
+
+**Deliberately not done:**
+
+- PracticeMix's contract gaps are **not** implemented here. Requirements 2/3/4/6 are page work in
+  another repo with its own test suite; folding them in would have widened the stage past its AC
+  (stage contract rule 4). `atc-66m` carries them.
+- No `transformPage`/CSP hook, no CLI, no `from: 'resolve'` — all three are S17's decisions.
 
 **Next prompt**
 > S8 is closed. Open S9: add settle-on-N to `assertDeployedVersion`, raise `assertPublishedBuild`'s
@@ -1473,7 +1534,7 @@ version agreement true at runtime as well as at deploy time.
 
 ---
 
-### S9 — Propagation and pin visibility  *(F8, F10 · P1 · ○)*
+### S9 — Propagation and pin visibility  *(F8, F10 · P1 · ✅)*
 
 **Goal:** stop rediscovering the propagation window every stage, and make a consumer able to see
 that it is behind.
@@ -1482,14 +1543,97 @@ that it is behind.
 
 **AC**
 
-- [ ] `assertDeployedVersion` requires **N consecutive** successful version reads (default 2, configurable); tests cover N=1, N=2 and a flap between reads.
-- [ ] `assertPublishedBuild`'s default `timeoutSec` raised to 300 so a direct caller gets the honest default; the `deployHooks()` wrapper still agrees.
-- [ ] `best-practices/gas-deployment/README.md` gains a "propagation is not atomic" section carrying all three measured numbers (P1R ~1 min / 3 retries for code; P2 ~90 s for a manifest change; P4 ~35 s for a first Pages publish).
-- [ ] The deploy summary prints the resolved `gas-deploy` and `gas-static` versions read from the installed `package.json`.
-- [ ] A real deploy shows the new row; output pasted.
-- [ ] `gas-deploy` version bumped, tagged, CHANGELOG updated; committed and pushed.
+- [x] `assertDeployedVersion` requires **N consecutive** successful version reads (default 2, configurable); tests cover N=1, N=2 and a flap between reads.
+- [x] `assertPublishedBuild`'s default `timeoutSec` raised to 300 so a direct caller gets the honest default; the `deployHooks()` wrapper still agrees.
+- [x] `best-practices/gas-deployment/README.md` gains a "propagation is not atomic" section carrying all three measured numbers (P1R ~1 min / 3 retries for code; P2 ~90 s for a manifest change; P4 ~35 s for a first Pages publish).
+- [x] The deploy summary prints the resolved `gas-deploy` and `gas-static` versions read from the installed `package.json`.
+- [x] A real deploy shows the new row; output pasted.
+- [x] `gas-deploy` version bumped, tagged, CHANGELOG updated; committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+
+**Done:**
+
+- `lib/verify.js`: `assertDeployedVersion` gains `settleReads` (default **2**, `1` restores the old
+  behaviour). Success requires N *consecutive* agreeing reads spaced by the poll interval; a
+  disagreeing read resets the streak and logs that it did. A run that matched at least once and then
+  never settled times out with *"it answered with version=… but never settled"* rather than a plain
+  expected-vs-actual, because those are different diagnoses. Result carries `settled`.
+- `assertPublishedBuild`'s default `timeoutSec` is **300**, matching what `deployHooks()` has always
+  passed. Pinned by a test that counts the polls (61 reads at the 5 s interval).
+- New `lib/tooling.js` — `resolveToolingVersions(root)` resolves `gas-deploy`/`gas-static` from the
+  **consumer's** `node_modules` (never this package's own manifest: what matters is the version the
+  checkout doing the deploy is running), and `toolingRow(root)` renders it. Wired into all three
+  `printDeploySummary` call sites in `lib/cli.js` — deploy success, verification failure, and
+  read-only `--summary`. It cannot fail a deploy: nothing resolvable prints
+  `(not resolvable from this checkout)`.
+- `printDeploySummary` takes an optional `tooling` row and prints it last; a caller that passes
+  none gets a byte-identical summary, asserted by test.
+- `best-practices/gas-deployment/README.md` §"Propagation is not atomic" — the three measurements
+  as a table with what was *seen* mid-window in each case, then the three consequences, framed as
+  the defaults they now are.
+- Released **`gas-deploy v1.3.0`**, tagged and pushed; CHANGELOG states the cost plainly (every
+  deploy is now at least one 5 s interval longer).
+
+**Found:**
+
+- **A real TEST deploy exercised the whole chain.** PracticeMix v1.6.7.10 → **v1.6.7.11 @203**,
+  green end to end, on the freshly released packages:
+
+  ```
+  🪝 static verify (assertPublishedBuild)…
+       attempt 1: test serving 1.6.7.10, waiting for 1.6.7.11...
+       … (8 attempts ≈ 40 s)
+     ✅ https://nuuc-it.github.io/Static/pub/pmix-sit/ serving v1.6.7.11 (test) → https://script.google.com/macros/s/AKfycbx…/exec
+
+  🔍 Verifying TEST is actually serving v1.6.7.11…
+    attempt 1: 1.6.7.11 confirmed (1/2) — re-reading to confirm the fleet has settled
+  ✅ TEST verified — serving v1.6.7.11 (target TEST)
+
+  🧪  TEST deploy summary
+     Product version: v1.6.7.11
+     Stamped at:      2026-08-25T06:19:45.767Z
+     Deployment ID:   AKfycbx6AZF5KKUi9HXM9oS2mMD0jtV25k5Fs21JqSSBM_v4U9Z8caHmMazdwhXyMD-4Agak
+     Revision:        @203
+     Script project:  1L33TE-4nLY8…   https://script.google.com/home/projects/1L33TE-4nLY8…/edit
+     Webapp:          https://script.google.com/macros/s/AKfycbx…/exec
+     Static page:     https://nuuc-it.github.io/Static/pub/pmix-sit/
+     Spreadsheet:     (sheetId not set in local.settings.json)
+     Tooling:         gas-deploy v1.3.0 · gas-static v1.3.1
+  ```
+
+  The read-only path was checked first (`--summary --env test`) and prints the same row.
+- **The 8-attempt static wait (~40 s) is the P4 number reproducing**, on a directory that already
+  exists. It is now inside a 300 s budget instead of a 60 s one, which is the whole point of the
+  raised default.
+- **`pnpm run verify:test` fails on pre-existing config drift**, unrelated to this stage:
+  `AXIOM_DATASET: server="(unset)" vs local="nuuts-mix"`. That is PracticeMix's own script
+  comparing script properties, not `gas-deploy`. Not touched, not filed — flagged here so the next
+  session does not read it as fallout from the repin.
+- **PracticeMix's `.beads` export is inconsistent**: `bd` refuses auto-export because
+  `issues.jsonl` holds two JSONL-only records absent from Dolt (`atc-4fk`, `atc-ohj`). The bead
+  filed in S8 (`atc-66m`) is in the Dolt store and visible to `bd list`; only the JSONL export is
+  stale. Pre-existing, in another repo, left alone.
+
+**Next stages must know:**
+
+- **Every deploy in the estate is now ~5 s longer** once a consumer repins, and the settle line
+  (`confirmed (1/2)`) appears in the output. That is expected, not a regression to investigate.
+- Any consumer with `verifyOptions.timeoutSec` tuned tight against the old single-read behaviour
+  should be checked at its conversion: the settle adds one interval to the *successful* path.
+- The tooling row is what makes F10 actionable, and it only says something useful if the CHANGELOGs
+  keep being written. S12 must not graduate the CHANGELOGs into anything else.
+- S13 (PracticeMix P5b, PROD) will be the first PROD deploy to run all of this. TEST is now one
+  version ahead (v1.6.7.11) of what PROD has ever seen.
+
+**Deliberately not done:**
+
+- No repo-wide "what is pinned where" checker. §3 F10 rejects it for five repos and the summary row
+  is the cheaper answer; nothing found here changes that.
+- `assertDeployedVersion`'s `timeoutSec` default is still **60**, not raised. Settling is the fix
+  for propagation; the timeout is a separate knob, and raising it would slow the failure path for
+  every project whose deploy genuinely broke. The propagation section says which projects should
+  raise it via `verifyOptions` (those that edit `appsscript.json` in a deploy).
 
 **Next prompt**
 > S9 is closed. Open S10, a small stage: fold `authStatePath()` and its stale-`.auth/user.json`
@@ -1873,7 +2017,7 @@ deletions in the same session**.
 | 3 | **D** | S4 — solo | Opus | ✅ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ✅ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
 | 5 | **F** | S7 — solo | Opus | ⏸ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
-| 6 | **G** | S8 + S9 | Sonnet | ○ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
+| 6 | **G** | S8 + S9 | Sonnet | ✅ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
 | 7 | **H** | S11 + S12 | Opus | ○ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
 | 8 | **I** | S13 — solo | Sonnet | ○ | Live PROD deploy. Nothing else belongs in a session while a deploy is running. | Low |
 | 9 | **J** | S15 — solo | Opus | ○ | First conversion: it validates S14's decision against reality and is the stage most likely to surface a needed package change. | High (whole repo) |
@@ -1928,6 +2072,19 @@ requires a standard GCP project attached to the script, which the hidden Apps Sc
 cannot provide. One correction carried in from the same exchange: a consent screen is required for
 *any* OAuth client, tier 1 included; what tier 2's restricted scopes add is Google **verification**.
 Session F is ⏸ in §6.3 for the same reason. No AC or finding content changed.
+
+**v7.2 — 2026-08-25.** Session G ran and closed **S8** and **S9**; both are ✅ with every AC box
+checked, so **F6, F8, F10 and F13 are discharged**. Shipped `gas-static v1.3.0` (scoped
+`readBuildInfo_` returning every field; `assertPublishedBuild` asserting `env` and `webappUrl` as
+well as `version`, polling a version mismatch but failing fast on a wrong build; default
+`timeoutSec` 60 → 300), `gas-static v1.3.1` (export the reader — v1.3.0 left it on a private path)
+and `gas-deploy v1.3.0` (`assertDeployedVersion` settling on 2 consecutive agreeing reads; the
+tooling-version row in the deploy summary). Two best-practice sections written: the six-point
+**static page interface contract** and **"Propagation is not atomic"** with all three measured
+numbers. Verified by a real TEST deploy (PracticeMix v1.6.7.11 @203, green, output in S9's
+handoff). PracticeMix repinned and its duplicate BUILD_INFO regex deleted; its four unmet contract
+requirements filed as `atc-66m` rather than fixed in-stage. No finding's content changed and no
+item was added or dropped.
 
 **v7 — 2026-08-24.** Session F ran S7's spike; the result changed §3 F16 and S7 rather than
 confirming them. Three things recorded: (a) the two keyless Drive download URLs are refused by the
