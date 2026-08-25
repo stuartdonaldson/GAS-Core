@@ -1,8 +1,9 @@
 # PLAN2 — post-PracticeMix review of the shared packages and best practices
 
-**Doc version:** 7.3 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
-**Revised:** 2026-08-25 (v7.3 — Session H closed S11 and S12; F11 and F19 discharged; the source
-documents are deleted; see §8)
+**Doc version:** 7.4 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
+**Revised:** 2026-08-25 (v7.4 — Session H closed S11 and S12, discharging F11 and F19 and deleting
+the source documents; a post-session debt audit then filed four uncaptured items and added stage
+contract rule 9; see §8)
 · **Scope:** GAS-Core
 `packages/`, `libs/`, `best-practices/`, and the estate that consumes them (F3Go30,
 RankChoiceVoting, GActionSheet, NUUC-Dispatch, PracticeMix).
@@ -788,6 +789,13 @@ deletion:
    onward the default is inverted: each stage ends committed and pushed, per `CLAUDE.md` §Session
    Completion. S1 exists to make that possible.
 8. Record blockers explicitly and finish the unblocked remainder of the stage.
+9. **A deferral to a later stage is written into that stage's AC checklist at the moment of
+   deferring, or filed as a bead. Naming a successor stage in handoff prose is not a handoff.**
+   Added 2026-08-25 after an audit of every closed stage found this to be the contract's one leak:
+   three items (`GAS-Core-geq`, `GAS-Core-rgc`, `GAS-Core-d5t`) were deferred to a named later
+   stage whose AC — written earlier — did not know about them, and survived only as a paragraph
+   nobody re-read at that stage's close. Everything deferred *as a bead*, or written into a
+   successor's AC list, survived. S19 carries this into the DevStandard version.
 
 **A stage closes only when every AC box in it is checked.** A stage with an unchecked box is ▶, not
 ✅, regardless of how much of it is done. Partial completion is recorded by checking the boxes that
@@ -2277,6 +2285,19 @@ from findings to the records that already exist, and the raw material for that f
 ---
 
 ## 8. Revision log
+
+**v7.4 — 2026-08-25.** Post-Session-H debt audit, not a stage. Every closed stage's
+*Deliberately not done* and *Found* blocks were cross-referenced against the open bead list. Four
+uncaptured items filed — `GAS-Core-geq` (the fourth §4.5 ADR, "the package owns the pipeline never
+the page", never written; S2 deferred it to S12 and S12's AC named READMEs only), `GAS-Core-d5t`
+(`test_download.py`/`test_upload.py` exist and nothing runs them, so F5's declared entry point
+covers part of the repo), `GAS-Core-rgc` (no document records the CI recipe or S3's Node-version
+glob trap), `GAS-Core-p97` (`PUBLISHERS.md`'s prose table and JSON block can disagree — S4 noted it
+in ADR-0003 *Harder* rather than filing it). Three of the four share one cause, now fixed as **stage
+contract rule 9** in §6.0 and carried to S19: a deferral to a later stage must land in that stage's
+AC list or in a bead, because prose naming a successor is not a handoff. Nothing deferred *as a
+bead* was lost, and rule 4 held across twelve stages with zero scope drift — the leak is narrow and
+the contract is otherwise sound.
 
 **v7.3 — 2026-08-25.** Session H ran and closed **S11** and **S12**; both are ✅ with every AC box
 checked, so **F11 and F19 are discharged** and the review's scaffolding is gone.
