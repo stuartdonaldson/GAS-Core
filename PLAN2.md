@@ -1,8 +1,8 @@
 # PLAN2 — post-PracticeMix review of the shared packages and best practices
 
-**Doc version:** 7 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
-**Revised:** 2026-08-24 (v7 — S7's spike ran and refuted F16's premise; F16 corrected, S7's AC
-resolved to their honest state with two owner blockers named; see §8) · **Scope:** GAS-Core
+**Doc version:** 7.1 · **Status:** findings + staged execution plan · **Created:** 2026-08-24 ·
+**Revised:** 2026-08-24 (v7.1 — S7's spike ran and refuted F16's premise; the implementation is
+held, not declined; see §8) · **Scope:** GAS-Core
 `packages/`, `libs/`, `best-practices/`, and the estate that consumes them (F3Go30,
 RankChoiceVoting, GActionSheet, NUUC-Dispatch, PracticeMix).
 
@@ -460,7 +460,8 @@ next admin-gate touch, not speculatively.
 > `drive.readonly` token, and the owner has decided (2026-08-24) that **PracticeMix requires no
 > consent screen** — see PracticeMix `adr/0008-no-oauth-consent-screen-for-practicemix.md`. The
 > direct-read path is therefore available only for files that are *deliberately* link-shared, and
-> adopting it now depends on two owner decisions, not on more engineering. The text below is kept as
+> adopting it depends on owner decisions, not on more engineering. **Held on the owner's call
+> (2026-08-24): deferred, not declined — revisit if those folders are ever link-shared.** The text below is kept as
 > the reasoning that produced the spike; where it asserts the files are link-shared, it is wrong.
 
 **Decided 2026-08-24, on the user's call: the primary path is a direct client-side read of the
@@ -813,7 +814,7 @@ is the authority on which stages share a session.
 | **S4** | Publish safety — ownership manifest + rebase | F3, F4 | P0 | ✅ | S2 | **D** · Opus, solo |
 | **S5** | Package hygiene — empty `bin/`, CHANGELOGs | F17, F18 | P3 | ✅ | S1 | **A** · Sonnet |
 | **S6** | Graduate the observed-reality findings | F19a | P1 | ✅ | S1, S2 | **E** · Opus, solo |
-| **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ▶ | S2 | **F** · Opus, solo |
+| **S7** | PracticeMix: direct Drive read (spike, then ship) | F16 | P1 | ⏸ | S2 | **F** · Opus, solo |
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ○ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ○ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
@@ -1292,7 +1293,7 @@ documents that a reader can reach, while the detail is still fresh — without w
 
 ---
 
-### S7 — PracticeMix: direct Drive read primary, base64 fallback  *(F16 · P1 · ▶ spike closed, implementation blocked)*
+### S7 — PracticeMix: direct Drive read primary, base64 fallback  *(F16 · P1 · ⏸ spike closed, implementation deferred)*
 
 **Goal:** stop round-tripping audio through the server when the files are already link-shared —
 spike first, exactly as P0 did, because assumed Google CORS behaviour has already cost a stage here.
@@ -1320,10 +1321,21 @@ spike first, exactly as P0 did, because assumed Google CORS behaviour has alread
 - [x] The generalisable half written into `best-practices/gas-static-frontend/README.md` as pattern content — including that the file IDs then *are* the access boundary.
 - [x] Committed and pushed.
 
-**Blockers** *(both are owner decisions; neither is engineering)*
+**Deferred — owner's call, 2026-08-24: "not going to do it now, maybe in the future."** The spike
+stands as the record; the implementation is not declined, it is parked. Two conditions gate a
+revisit, and neither is engineering:
 
 1. **An API key, or authority to create one.** `https://www.googleapis.com/drive/v3/files/<id>?alt=media&key=<KEY>` is the only surviving candidate and it is untested. Nothing exists today: no key, and no standard GCP project attached to the script. Re-running the spike with one is two minutes — `DRIVE_API_KEY=<key> pnpm exec playwright test tests/0-drive-direct-read-spike.spec.js --project=chromium`.
 2. **A decision to link-share the practice-track folders.** Without it the direct read reaches 3 of 14 files and buys nothing for the content the choir actually uses. With it, the consequence F16 already states applies: the **file IDs become the access boundary**, independently of the app.
+
+**The revisit trigger is condition 2, not condition 1.** An API key is cheap but buys a fast path
+for three sample files; the sharing decision is what makes the optimisation worth anything. So the
+honest order is: if the practice-track folders are ever deliberately link-shared, re-run
+`DRIVE_API_KEY=<key> pnpm exec playwright test tests/0-drive-direct-read-spike.spec.js --project=chromium`
+and reopen this stage. Until then nothing here needs doing, and **ADR-0007 stands** — base64 is the
+only audio transfer path, for the reason ADR-0008 gives. Note that the API key *also* requires a
+standard GCP project attached to the script (a key cannot be created in Apps Script's hidden default
+project); it avoids the consent screen, not the project.
 
 **Handoff**
 
@@ -1860,7 +1872,7 @@ deletions in the same session**.
 | 2 | **C** | S2 + S14 | Opus | ✅ | Both are pure ADR authoring against the same conventions and the same `adr-quality-check` loop; one session that learns the format writes both. **S14 depends only on S2**, so pulling it forward from its index position costs nothing — its AC explicitly forbid migrating any consumer. This is the one deviation from §6.1's order, and dependencies already permit it. | Medium |
 | 3 | **D** | S4 — solo | Opus | ✅ | Designs a cross-repo schema §3 only sketches, edits two repos GAS-Core does not own, and is the only P0 with a destructive failure mode. Early, because the cross-repo half may be slow. | Medium |
 | 4 | **E** | S6 — solo | Opus | ✅ | The context hog of the whole plan: 1176 lines of `PMIX-PLAN.md` plus both recommendations read as *source*, written out to five destinations across two repos. If it does not fit, **split at the repo boundary** — GAS-Core best-practices first, then PracticeMix work-log + the three ADRs — rather than dropping AC. | Very high |
-| 5 | **F** | S7 — solo | Opus | ▶ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
+| 5 | **F** | S7 — solo | Opus | ⏸ | The implementation AC are contingent on a spike outcome that is unknown by construction. Both halves belong in one session so the spike result feeds the code directly. | High |
 | 6 | **G** | S8 + S9 | Sonnet | ○ | Both are `packages/` internals with tests and a version bump, over the same files (`lib/buildInfo.js`, `lib/assert.js`, `lib/verify.js`, `lib/summary.js`, both test dirs). Together they take **one** coordinated bump/tag/CHANGELOG pass instead of two. F6's six-point contract is quoted verbatim in §3, so the authoring half is transcription. | High but coherent |
 | 7 | **H** | S11 + S12 | Opus | ○ | Both edit `best-practices/gas-static-frontend/README.md` and the package READMEs, and S12's deletions are only safe once S11's README is correct. One session holds the source documents and their replacements side by side, which is exactly what "graduate, then delete" requires. | High |
 | 8 | **I** | S13 — solo | Sonnet | ○ | Live PROD deploy. Nothing else belongs in a session while a deploy is running. | Low |
@@ -1907,6 +1919,15 @@ from findings to the records that already exist, and the raw material for that f
 ---
 
 ## 8. Revision log
+
+**v7.1 — 2026-08-24.** S7 moved from ▶ to **⏸ held** on the owner's call ("not going to do it now,
+maybe in the future"): the direct read is deferred, not declined, and ADR-0007 stands meanwhile. Its
+*Blockers* block is reframed as revisit conditions, with the trigger named as the **sharing**
+decision rather than the API key — a key buys a fast path for three sample files and additionally
+requires a standard GCP project attached to the script, which the hidden Apps Script default project
+cannot provide. One correction carried in from the same exchange: a consent screen is required for
+*any* OAuth client, tier 1 included; what tier 2's restricted scopes add is Google **verification**.
+Session F is ⏸ in §6.3 for the same reason. No AC or finding content changed.
 
 **v7 — 2026-08-24.** Session F ran S7's spike; the result changed §3 F16 and S7 rather than
 confirming them. Three things recorded: (a) the two keyless Drive download URLs are refused by the
