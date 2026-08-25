@@ -37,6 +37,7 @@ function printDeploySummary({
   sheetId,
   sheetIdKey = 'sheetId',
   extraRows = [],
+  tooling = null,
   log = console.log,
 }) {
   const out = [];
@@ -60,6 +61,10 @@ function printDeploySummary({
   out.push(line_('Spreadsheet', sheetId
     ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit`
     : `(${sheetIdKey} not set in local.settings.json)`));
+  // Last, and only when supplied: provenance about the tools, not about the deployment. It is
+  // here so a consumer two minor versions behind finds that out on a deploy rather than never
+  // (PLAN2 F10) — pair it with the package CHANGELOGs, which say what the newer version gives.
+  if (tooling) out.push(line_(tooling.label || 'Tooling', tooling.value || tooling.missing || '(unknown)'));
   out.push('');
 
   for (const l of out) log(l);

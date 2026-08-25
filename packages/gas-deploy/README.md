@@ -140,7 +140,7 @@ actually happened. See its README §"Chaining off a deploy".
 | `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. **Must contain `target.anchor`** — see §Deployment description & the anchor. |
 | `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. See §Project-specific summary rows. |
 | `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
-| `verifyOptions` | `{ intervalSec, timeoutSec }` for `assertDeployedVersion`. |
+| `verifyOptions` | `{ intervalSec, timeoutSec, settleReads }` for `assertDeployedVersion`. `settleReads` defaults to 2 — see §Deploy verification. |
 | `claspFields` | Object or `(ctx) => object` — the rest of `.clasp.json` (`projectId`, `parentId`, extension lists). `scriptId`/`rootDir` are always written last and cannot be overridden. |
 | `resolveBeforeStamp` | Resolve the deployment *before* the stamp, so the stamper receives `deploymentId` and `webAppUrl`. Needed when the version file carries the deployment's own /exec URL (GActionSheet's `BUILD_INFO.webappUrl`). Costs no extra `clasp deployments` call. |
 | `ledgerEntry` / `deployMetadata` | `(ctx) => object` — shape the ledger line / `.deploy-metadata.json` yourself when a project's records predate the package and have readers. A shaped record is written verbatim: the package adds no `at`/`user` keys to it. |
@@ -195,10 +195,16 @@ Each consumer's webapp exposes one uniform route, no secret required so it answe
 ```
 
 `assertDeployedVersion` polls it until the reported **version and target** match what was just
-stamped. It is the mandatory, non-skippable last step before the summary; there is no flag to
-turn it off. The **target** check is what catches a deploy landing in the wrong environment —
-nothing before this could detect that, and it matters most where several targets share one
-version counter.
+stamped, **twice consecutively**. It is the mandatory, non-skippable last step before the summary;
+there is no flag to turn it off. The **target** check is what catches a deploy landing in the wrong
+environment — nothing before this could detect that, and it matters most where several targets
+share one version counter.
+
+The settle count is `verifyOptions.settleReads` (default `2`; `1` restores the pre-settling
+behaviour). One agreeing read only proves *an* edge has turned over: propagation across the fleet
+was measured at ~1 min for a code change and ~90 s for a manifest change, and mid-window
+`cmd=version` can answer with the new version while another action still runs old code. See
+`best-practices/gas-deployment/README.md` §Propagation is not atomic for the measurements.
 
 The route itself is per-project GAS code (only the project knows where its stamper wrote); the
 package owns the Node side.
@@ -212,7 +218,9 @@ Enforced structurally, and asserted in `test/invariants.test.js`:
 - `package.json` is the sole source of truth for version and build. The stamped version file is
   **generated, never read back**.
 - `printDeploySummary` is the final step of every deploy — on the success path *and* the
-  verification-failure path.
+  verification-failure path. Its last row names the `gas-deploy`/`gas-static` versions resolved
+  from the consumer's own `node_modules`, so a checkout pinned to an old tag says so on every
+  deploy (PLAN2 F10); pair it with each package's `CHANGELOG.md`.
 - No `clasp deploy` without `--deploymentId`.
 - The package never shells out to `npm`/`pnpm`.
 - A secret is never printed, never placed in argv, and never placed in a query string — including

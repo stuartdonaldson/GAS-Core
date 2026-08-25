@@ -35,13 +35,24 @@ function sleep_(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); 
  * Polls rather than checking once for the same reason execWithRetry exists: the ~5s
  * edge-propagation race (#9). Everything is injected (postFn/sleep/log) so match, mismatch and
  * timeout are all unit-testable with no network call and no wall-clock wait.
+ *
+ * **Settling (`settleReads`, default 2).** A single agreeing read is not proof the fleet has
+ * turned over. Three PracticeMix stages independently watched `cmd=version` answer with the new
+ * version while one action still ran old code — converging in ~1 min / 3 retries for a code
+ * change and ~90 s for a manifest change (PLAN2 F8). So success requires N *consecutive*
+ * agreeing reads, spaced by the poll interval, and a disagreeing read in between resets the
+ * count. `settleReads: 1` restores the pre-F8 single-read behaviour.
  */
 async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarget, options = {}) {
-  const { postFn = post, intervalSec = 5, timeoutSec = 60, sleep = sleep_, log = () => {} } = options;
+  const {
+    postFn = post, intervalSec = 5, timeoutSec = 60, settleReads = 2, sleep = sleep_, log = () => {},
+  } = options;
   const url = execUrl(deploymentId, 'version');
   const startedAt = Date.now();
   let attempt = 0;
+  let streak = 0;
   let lastResult = null;
+  let lastMatch = null;
 
   for (;;) {
     attempt++;
@@ -52,20 +63,42 @@ async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarg
       lastResult = null;
     }
 
-    if (lastResult && lastResult.ok && lastResult.version === expectedVersion && lastResult.target === expectedTarget) {
-      return { ok: true, attempts: attempt, version: lastResult.version, target: lastResult.target, deploymentId: lastResult.deploymentId };
+    const matched = !!(lastResult && lastResult.ok
+      && lastResult.version === expectedVersion && lastResult.target === expectedTarget);
+
+    if (matched) {
+      lastMatch = lastResult;
+      streak++;
+      if (streak >= settleReads) {
+        return {
+          ok: true, attempts: attempt, settled: streak,
+          version: lastMatch.version, target: lastMatch.target, deploymentId: lastMatch.deploymentId,
+        };
+      }
+      log(`  attempt ${attempt}: ${expectedVersion} confirmed (${streak}/${settleReads}) — re-reading to confirm the fleet has settled`);
+    } else {
+      // Losing the streak is the signal, not noise: it means part of the fleet is still on the
+      // previous code (PLAN2 F8). Start counting again.
+      if (streak > 0) log(`  attempt ${attempt}: the fleet answered with an older version again — settle count reset`);
+      streak = 0;
     }
 
-    const seen = lastResult && typeof lastResult === 'object'
-      ? `version=${lastResult.version || '(none)'} target=${lastResult.target || '(none)'}`
-      : '(no response)';
-    log(`  attempt ${attempt}: expected version=${expectedVersion} target=${expectedTarget}, got ${seen}`);
+    if (!matched) {
+      const seen = lastResult && typeof lastResult === 'object'
+        ? `version=${lastResult.version || '(none)'} target=${lastResult.target || '(none)'}`
+        : '(no response)';
+      log(`  attempt ${attempt}: expected version=${expectedVersion} target=${expectedTarget}, got ${seen}`);
+    }
 
     if (Date.now() - startedAt + intervalSec * 1000 > timeoutSec * 1000) {
-      throw new Error(
-        `assertDeployedVersion timed out after ${attempt} attempts (${timeoutSec}s): ` +
-        `expected version=${expectedVersion} target=${expectedTarget}, last seen ${seen}`
-      );
+      const seen = lastResult && typeof lastResult === 'object'
+        ? `version=${lastResult.version || '(none)'} target=${lastResult.target || '(none)'}`
+        : '(no response)';
+      const why = lastMatch
+        ? `it answered with version=${expectedVersion} target=${expectedTarget} but never settled ` +
+          `(${settleReads} consecutive agreeing reads required), last seen ${seen}`
+        : `expected version=${expectedVersion} target=${expectedTarget}, last seen ${seen}`;
+      throw new Error(`assertDeployedVersion timed out after ${attempt} attempts (${timeoutSec}s): ${why}`);
     }
     await sleep(intervalSec * 1000);
   }

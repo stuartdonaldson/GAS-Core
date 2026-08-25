@@ -1,5 +1,26 @@
 # Changelog — gas-static
 
+## 1.3.0
+
+- **`assertPublishedBuild` asserts all three fields `version.json` carries** (PLAN2 F6), not just
+  `version`: new `expectedEnv` (default: the env being asserted) and `expectedWebappUrl` (default:
+  `BUILD_INFO`'s `webappUrl`), each opt-out-able with `null`. The env-agreement guard ran at *build*
+  time only, so a `dist/prod` copied into a `test` dest, or a page published from a stale `dist/`,
+  satisfied the old assertion. A version mismatch still polls (propagation); an env/webappUrl
+  mismatch on a page already serving the right version fails on the first read, because nothing
+  about a wrong build in the right place converges.
+- `deployHooks()`'s verify step passes the env and `/exec` URL the **build step just resolved**, so
+  the two hooks cannot be talking about different builds.
+- **Default `timeoutSec` raised from 60 to 300** (PLAN2 F8). The measured propagation range is 35 s
+  (first Pages publish) to ~90 s (manifest change); 60 contradicted all of it. `deployHooks()`
+  already passed 300, so only direct callers change — and they change to the honest number.
+- **`readBuildInfo_` is scoped to the `BUILD_INFO` literal and returns every field found**, `buildDate`
+  included (PLAN2 F13). The old regex took the first `"name": "…"` match anywhere in the file, so a
+  comment or a second literal above `BUILD_INFO` silently won; and because it returned a fixed three
+  fields, PracticeMix wrote a duplicate regex of its own for `buildDate` — the package's field-reader
+  re-diverging at its first consumer. A file with no such literal now throws by name instead of
+  returning empty strings. New `options.literalName` for a differently-named literal.
+
 ## 1.2.0
 
 - **Publish safety (PLAN2 F3/F4, [ADR-0003](../../adr/0003-publish-ownership-manifest.md)).** The

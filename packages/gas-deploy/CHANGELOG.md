@@ -1,5 +1,20 @@
 # Changelog — gas-deploy
 
+## 1.3.0
+
+- **`assertDeployedVersion` settles on N consecutive agreeing reads** — `verifyOptions.settleReads`,
+  default **2**, `1` restores the previous behaviour (PLAN2 F8). A single agreeing read only proves
+  *an* edge has turned over: three PracticeMix stages independently watched `cmd=version` answer
+  with the new version while one action still ran old code, converging in ~1 min for a code change
+  and ~90 s for a manifest change. A disagreeing read resets the count, and a fleet that never
+  settles times out saying so rather than reporting a plain expected-vs-actual.
+  **Every deploy is now at least one poll interval (5 s) longer** — that is the cost of the proof.
+- **The deploy summary's last row names the tooling versions** resolved from the consumer's own
+  `node_modules` — `gas-deploy v1.3.0 · gas-static v1.3.0` (PLAN2 F10). Five repos consume these
+  packages by git tag and three sat two minor versions behind with nothing anywhere saying so. New
+  `lib/tooling.js` (`resolveToolingVersions`, `toolingRow`); the row never fails a deploy, printing
+  `(not resolvable from this checkout)` when it cannot resolve either package.
+
 ## 1.2.1
 
 - Documented `local.settings.json`: there is no fixed schema — every key is named by the consumer's

@@ -83,8 +83,14 @@ function deployHooks(pipeline, config, options = {}) {
       run: async (ctx) => {
         const env = envFor(ctx);
         const log = ctx.log || console.log;
+        // The env and /exec URL asserted are the ones the build step just resolved, not a second
+        // read of BUILD_INFO — the two hooks must be talking about the same build, or the
+        // assertion is checking the page against something other than what was published.
+        const built = state.built || {};
         const result = await pipeline.assertPublishedBuild(env, ctx.version, {
           ...pollOptions,
+          ...(built.env ? { expectedEnv: built.env } : {}),
+          ...(built.webappUrl ? { expectedWebappUrl: built.webappUrl } : {}),
           log: (m) => log(`   ${m}`),
         });
         state.verified = result;

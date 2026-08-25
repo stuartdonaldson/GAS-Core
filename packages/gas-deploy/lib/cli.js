@@ -29,6 +29,7 @@ const { computeVersion } = require('./version.js');
 const { resolveDeploymentId, standardChain } = require('./resolvers.js');
 const { assertDeployedVersion, queryLiveVersion } = require('./verify.js');
 const { printDeploySummary } = require('./summary.js');
+const { toolingRow } = require('./tooling.js');
 const { writeLedgerEntry, writeDeployMetadata } = require('./ledger.js');
 
 function loadSettings_(settingsPath) {
@@ -235,7 +236,7 @@ async function deploy(config, targetKey, options = {}) {
     printDeploySummary({
       label, emoji: target.emoji, version, now, deploymentId, revision, scriptId,
       scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
-      sheetIdKey: target.sheetIdKey, extraRows: summaryRows, log,
+      sheetIdKey: target.sheetIdKey, extraRows: summaryRows, tooling: toolingRow(root), log,
     });
     process.exitCode = 1;
     return { ok: false, error: err.message, version, deploymentId, revision };
@@ -244,7 +245,7 @@ async function deploy(config, targetKey, options = {}) {
   printDeploySummary({
     label, emoji: target.emoji, version: verified.version, now, deploymentId, revision, scriptId,
     scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
-    sheetIdKey: target.sheetIdKey, extraRows: summaryRows, log,
+    sheetIdKey: target.sheetIdKey, extraRows: summaryRows, tooling: toolingRow(root), log,
   });
   return { ok: true, version: verified.version, deploymentId, revision };
 }
@@ -293,7 +294,7 @@ async function summary(config, targetKey) {
   printDeploySummary({
     label, emoji: target.emoji, version, now, deploymentId, revision, scriptId,
     scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
-    sheetIdKey: target.sheetIdKey, extraRows: rows, log,
+    sheetIdKey: target.sheetIdKey, extraRows: rows, tooling: toolingRow(root), log,
   });
   return { version, deploymentId, revision, live: !!live };
 }

@@ -192,13 +192,35 @@ that owns the namespace.
 
 ## `assertPublishedBuild`
 
-Polls `liveUrl(env) + 'version.json'` until the reported `version` matches. No flag to turn it
-off when chained as a `postDeploy` step of `gas-deploy`'s `runCli` — a published front end the
-CDN hasn't picked up yet is indistinguishable from a failed fix.
+Polls `liveUrl(env) + 'version.json'` until the published build agrees with what was just deployed.
+No flag to turn it off when chained as a `postDeploy` step of `gas-deploy`'s `runCli` — a published
+front end the CDN hasn't picked up yet is indistinguishable from a failed fix.
 
 ```js
-{ intervalSec = 5, timeoutSec = 60 }   // same shape as gas-deploy's verifyOptions
+{
+  intervalSec = 5,
+  timeoutSec = 300,          // the measured range is 35 s to ~90 s; 60 was under it
+  expectedEnv,               // default: the env being asserted. `null` opts out.
+  expectedWebappUrl,         // default: BUILD_INFO's webappUrl. `null` opts out.
+}
 ```
+
+**All three fields `version.json` carries are asserted, not just `version`.** The env-agreement
+guard runs at *build* time only, so a `dist/prod` copied into a `test` dest, or a page published
+from a stale `dist/`, used to satisfy this assertion (PLAN2 F6). Under `deployHooks()` the two
+extra expectations come straight from the build step's own result, so both hooks are talking about
+the same build rather than re-reading `BUILD_INFO`.
+
+The two kinds of disagreement are not the same failure and are not handled the same way:
+
+| Field | On mismatch | Why |
+|---|---|---|
+| `version` | keep polling to `timeoutSec` | the previous build is still being served — propagation |
+| `env`, `webappUrl` | fail on the first read | the right *version* is serving and it is the wrong build; nothing about that converges |
+
+The page must also tell the truth about version agreement at **runtime** — see
+`best-practices/gas-static-frontend/README.md` §The static page interface contract, which this
+assertion is the deploy-time half of.
 
 ## What this package deliberately does not do
 

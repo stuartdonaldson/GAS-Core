@@ -251,6 +251,48 @@ protect.
 
 ---
 
+## The static page interface contract
+
+A static front end and the GAS backend it talks to are two independently deployed halves, and
+**asserting they agree at deploy time is necessary but not sufficient**. They can diverge after a
+green deploy: a CDN edge still serving the previous page, a visitor holding a cached document, a
+publish that succeeded while the backend was later rolled back. The deploy-time guard
+(`gas-static`'s `assertPublishedBuild`, which asserts the published `version`, `env` *and*
+`webappUrl`) closes the publish window. These six requirements close the runtime one — they make
+the page itself tell the truth about which halves are running.
+
+Every static front end in the estate must satisfy all six. **F3Go30 is the reference
+implementation** (`static-pages/src/index.html`, pinned by
+`test/test_static_page_client_invariants.js`).
+
+1. **The page displays its own build version persistently** — a footer, populated *before any
+   network call*. F3Go30 calls `applyVersionState_(STATIC_BUILD_VERSION_, null)` at load and
+   repaints later; a page that cannot reach its backend still shows what it is.
+2. **Every API response carries the server's version**, on a response the page already makes
+   (F3Go30 puts it on `cfg.appVersion` in every identify), never a dedicated call. The page
+   compares it against its own build.
+3. **On mismatch the page shows *both* versions and offers a reload.** The version shown first is
+   always the **client** build — `v2.4.5 (build) · server v2.4.7` — because, in the reference
+   implementation's own words, "the version a PAX reads back off the footer during support must be
+   the one their document is actually running". Never silently show the client version alone on a
+   mismatch, and never replace it with the server's.
+4. **Dismissal of the update prompt is keyed to the version dismissed**, not a boolean
+   (`localStorage['go30UpdateDismissed'] = '2.4.7'`). A boolean silences every future mismatch;
+   a version key means the next one prompts again.
+5. **An unbuilt or local document is labelled as such and never reported as stale.** Unbuilt `src/`
+   served directly (local dev, Playwright) has no build to be behind, so a null client build is not
+   staleness: `isUpdateAvailable_` returns false and the footer reads `v… (server)` or
+   `unbuilt (local)`.
+6. **Every request carries the client build version** (`clientVersion: STATIC_BUILD_VERSION_` on
+   every POST), so the *backend* can see which build is calling it. This is the half nobody asks
+   for: without it, stale clients surface in support calls instead of in logs.
+
+Requirements 1 and 5 are the page's own honesty; 2, 3 and 4 are the user-visible backstop for the
+propagation window (see [`../gas-deployment/README.md`](../gas-deployment/README.md) §Propagation
+is not atomic); 6 is the observability half.
+
+---
+
 ## Details the first pass missed (fix up front, not as follow-ups)
 
 None of these show up in a functional smoke test — the page works, it just doesn't behave like a

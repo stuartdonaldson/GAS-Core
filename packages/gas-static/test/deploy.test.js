@@ -79,3 +79,15 @@ test('no liveUrl configured prints an explanation, never a broken URL', () => {
   assert.deepEqual(pipeline.summaryRows()(ctx_()),
     [{ label: 'Static page', missing: '(liveUrl not configured)' }]);
 });
+
+test('the verify hook asserts against the build it just made, not a re-read (PLAN2 F6)', async () => {
+  const { pipeline, calls } = pipeline_();
+  pipeline.build = (env) => ({ outDir: '/proj/app/static-pages/dist/' + env, version: '1.2.3', env, webappUrl: 'https://script.google.com/macros/s/AKfyLIVE/exec' });
+  const hooks = pipeline.deployHooks();
+
+  for (const hook of hooks) await hook.run(ctx_());
+
+  const assertOptions = calls.find(c => c[0] === 'assert')[3];
+  assert.equal(assertOptions.expectedEnv, 'test');
+  assert.equal(assertOptions.expectedWebappUrl, 'https://script.google.com/macros/s/AKfyLIVE/exec');
+});

@@ -14,6 +14,7 @@ const resolvers = require('./lib/resolvers.js');
 const ledger = require('./lib/ledger.js');
 const summary = require('./lib/summary.js');
 const verify = require('./lib/verify.js');
+const tooling = require('./lib/tooling.js');
 const webapp = require('./lib/webapp.js');
 const cli = require('./lib/cli.js');
 
@@ -24,6 +25,7 @@ module.exports = {
   ...verify,
   ...ledger,
   ...summary,
+  ...tooling,
   ...version,
   claspEnv: clasp.claspEnv,
   execWithRetry: clasp.execWithRetry,
