@@ -818,7 +818,7 @@ is the authority on which stages share a session.
 | **S8** | Version agreement — reader, assertion, page contract | F13, F6 | P1 | ✅ | S3 | **G** · Sonnet |
 | **S9** | Propagation and pin visibility | F8, F10 | P1 | ✅ | S3, S5 | **G** · Sonnet |
 | **S10** | Playwright auth-state trap → best practice | F14 | P2 | ✅ | S1 | **A** · Sonnet |
-| **S11** | Retire the copy-me scripts | F11 | P1 | ○ | S4, S8 | **H** · Opus |
+| **S11** | Retire the copy-me scripts | F11 | P1 | ✅ | S4, S8 | **H** · Opus |
 | **S12** | Graduate package behaviour; delete the sources | F19b | P1 | ○ | S6, S8, S9, S11 | **H** · Opus |
 | **S13** | PracticeMix P5b — PROD, `pub/pmix`, retirement clock | P5b | P1 | ○ | ~~S7~~ (discharged — S7 changed no audio code) | **I** · Sonnet, solo |
 | **S14** | Decide one config file or two | F15 | P2 | ✅ | S2 | **C** · Opus |
@@ -1697,7 +1697,7 @@ another two stages.
 
 ---
 
-### S11 — Retire the copy-me scripts  *(F11 · P1 · ○)*
+### S11 — Retire the copy-me scripts  *(F11 · P1 · ✅)*
 
 **Goal:** remove the drift source, and make one document carry all three requirements an adopter
 must meet.
@@ -1706,14 +1706,88 @@ must meet.
 
 **AC**
 
-- [ ] `best-practices/gas-static-frontend/build-static-pages.js` and `publish-static-pages.js` deleted.
-- [ ] The README points at `packages/gas-static/README.md` and carries the ~15-line `tools/static-pages.js` config example plus the `deployHooks()`/`summaryRows()` two-liner.
-- [ ] S8's six-point interface contract and S4's `PUBLISHERS.md` convention are both reachable from that one README.
-- [ ] `gas-backend-example.js`, `cors-fetch-client.html`, `gis-identity-client.html` and `appsscript.json.example` are **retained** — the package owns the pipeline, never the page.
-- [ ] `grep -rn 'build-static-pages\|publish-static-pages' best-practices/ docs/` returns no stale pointer; output pasted.
-- [ ] Committed and pushed.
+- [x] `best-practices/gas-static-frontend/build-static-pages.js` and `publish-static-pages.js` deleted.
+- [x] The README points at `packages/gas-static/README.md` and carries the ~15-line `tools/static-pages.js` config example plus the `deployHooks()`/`summaryRows()` two-liner.
+- [x] S8's six-point interface contract and S4's `PUBLISHERS.md` convention are both reachable from that one README.
+- [x] `gas-backend-example.js`, `cors-fetch-client.html`, `gis-identity-client.html` and `appsscript.json.example` are **retained** — the package owns the pipeline, never the page.
+- [x] `grep -rn 'build-static-pages\|publish-static-pages' best-practices/ docs/` returns no stale pointer; output pasted.
+- [x] Committed and pushed.
 
-**Handoff** — Done: / Found: / Next stages must know: / Deliberately not done:
+**Handoff**
+
+**Done:**
+
+- Both scripts deleted (`git rm`). The folder now holds `README.md`, `RECOMMENDATION.md` (S12's
+  deletion), and the four retained *page/backend* examples.
+- `README.md` rewritten in four places, all pointing one way — at the package:
+  - **Consolidation-status banner** no longer says "still three hand-copied scripts / see
+    `RECOMMENDATION.md`". It states the split (**this document owns the page, the package owns the
+    pipeline**) and links the **three requirements an adopter must meet**: Step 5, the six-point
+    interface contract, and the security pre-flight. That banner is the AC's "both reachable from
+    that one README", made explicit rather than left to a reader's search.
+  - **§Step 5 retitled "Build and publish through `gas-static`"** and rewritten from the
+    hand-rolled description to: "do not write a build or publish script", the four principles the
+    package encodes (env-agnostic source, dedicated static-only repo, chain-into-deploy, a stale
+    publish fails the deploy), the ~20-line `tools/static-pages.js` config example, the
+    `deployHooks()`/`summaryRows()` two-liner, and **why `webappUrl.from` is `buildInfo`-only**
+    with a link to `adr/0001`.
+  - **§Step 5 gained the `PUBLISHERS.md` convention** — the human half, the fenced-JSON ownership
+    map with a worked two-entry example, what `publishEnv` refuses and why, the structural
+    backstop, and the disjoint-path ownership rule that makes the automatic
+    `git pull --rebase --autostash` safe. Links `adr/0003` and the package's §Publish safety.
+  - **§Checklist for the next project**: the three pipeline bullets became five — adopt the
+    package (config, not a copied script), register the `dest` in `PUBLISHERS.md` before the first
+    publish, chain with `deployHooks()`/`summaryRows()`, satisfy all six contract requirements, run
+    the security pre-flight.
+  - **§Provenance** no longer lists F3Go30's `tools/build-static-pages.js` /
+    `publish-static-pages.js` as reference files; it names them as one of the three copies the
+    package was extracted from and says to read the package instead. The reference-file list now
+    carries an explicit "the build/publish pipeline is **not** a file in this folder" bullet.
+- Full suite green after the change (`npm test`, repo root): `ℹ tests 177 / ℹ pass 177 / ℹ fail 0`.
+
+**Found:**
+
+- **The AC grep is not clean, and two of the three residues are correct.** Output at close:
+
+  ```
+  best-practices/gas-deployment/RECOMMENDATION.md:30:  ... `tools/publish-static-pages.js` and a test each re-hardcode the literal ...
+  best-practices/gas-deployment/RECOMMENDATION.md:275: ... `tools/publish-static-pages.js` to
+  best-practices/gas-deployment/RECOMMENDATION.md:707: ... `tools/publish-static-pages.js` (had no runtime
+  best-practices/gas-deployment/RECOMMENDATION.md:788: ... `setWebappUrl`, `publish-static-pages`; RCV's
+  best-practices/gas-deployment/RECOMMENDATION.md:789: ... `bootstrapSecret`, `publish-static-pages`.
+  best-practices/gas-deployment/RECOMMENDATION.md:924: ... 🪝 setWebappUrl → 🪝 publish-static-pages → verify → summary.
+  best-practices/gas-static-frontend/RECOMMENDATION.md:23: | Build | `tools/build-static-pages.js` | ...
+  best-practices/gas-static-frontend/RECOMMENDATION.md:24: | Publish | `tools/publish-static-pages.js` | ...
+  best-practices/gas-static-frontend/RECOMMENDATION.md:39: ("adapted from F3Go30's `tools/build-static-pages.js`")
+  ```
+
+  None is a pointer to a deleted template. `gas-static-frontend/RECOMMENDATION.md`'s three are the
+  cross-project survey rows and are **deleted with the file in S12** — verified clean after that
+  stage, output re-pasted in S12's handoff. `gas-deployment/RECOMMENDATION.md`'s six name
+  *F3Go30's and RCV's own* `tools/` scripts, which still exist in those repos until S17 and S15
+  convert them; that is a live, true reference in a document about those repos, not a stale
+  pointer, and rewriting a different recommendation would have widened the stage (rule 4).
+- `docs/demo-config-reference.md:176` points at "`gas-static-frontend/README.md` Step 5" by name.
+  Step 5 still exists and still answers the same question (where does a static page get published),
+  so the pointer survives the retitle. Checked, not edited.
+
+**Next stages must know:**
+
+- **S12** inherits a README whose banner and §Step 5 are already correct, and whose *only*
+  remaining link to `RECOMMENDATION.md` is the one S12 deletes. `best-practices/README.md:28`
+  still describes `RECOMMENDATION.md` in the index table — that row is S12's edit, deliberately
+  untouched here.
+- **S15/S16/S17** now have one document to hand a converting project: §Step 5 carries the config
+  example, the `projectName`/`PUBLISHERS.md` registration step and the `buildInfo`-only rationale,
+  so a conversion should not need to read the package's internals to start.
+
+**Deliberately not done:**
+
+- Did not delete or edit either `RECOMMENDATION*.md` (S12), and did not touch
+  `best-practices/README.md`'s index row (S12).
+- Did not run `implementation-gate` — documentation-only, which the skill's own scope excludes.
+- Did not touch the four retained page/backend examples, and did not add a static-page *page*
+  template: the package owns the pipeline, never the page.
 
 **Next prompt**
 > S11 is closed. Open S12, the closing graduation: move the package-behaviour text into the package

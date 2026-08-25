@@ -1,9 +1,17 @@
 # Best Practice: Porting a GAS HtmlService Page to a Static Front End
 
-> **Consolidation status:** the *pattern* below is settled and in production in three projects, but
-> the build/publish/verify pipeline around it is still three hand-copied scripts. See
-> [`RECOMMENDATION.md`](RECOMMENDATION.md) for the cross-project survey, the proposed `gas-static`
-> package, the brokered-identity model, and the PracticeMix migration plan.
+> **Consolidation status:** the *pattern* below is settled and in production, and the
+> build/publish/verify pipeline around it is now a package —
+> [`packages/gas-static`](../../packages/gas-static/README.md). This document owns the **page**:
+> why you would port one, how to port it, the traps, the identity models, the evidence. The package
+> owns the **pipeline**: stamping, per-env `dist/`, publishing into the static host repo, and
+> asserting the published build. Adopt both — Step 5 below is the join.
+>
+> Three requirements an adopting project must meet, all reachable from here:
+> [Step 5](#step-5--build-and-publish-through-gas-static) (the pipeline and the host repo's
+> `PUBLISHERS.md` ownership manifest), [the static page interface
+> contract](#the-static-page-interface-contract) (six runtime requirements), and
+> [the security pre-flight](#the-security-boundary-this-creates--run-this-pre-flight-before-flipping-the-manifest).
 
 ## Overview
 
@@ -23,8 +31,9 @@ story to begin with and the sandbox's quirks genuinely don't matter.
 **Provenance:** Extracted from F3Go30's migration of its check-in page (`script/CheckinApp.html`)
 to a static page hosted on GitHub Pages, calling the same GAS web app. Source doc:
 `~/proj/F3Go30/docs/StaticHTMLonGas.md` (source issues F3Go30-5nfj.1/.2 and same-day follow-ups).
-Reference files in that project: `tools/build-static-pages.js`, `tools/publish-static-pages.js`,
-`tools/manage-deployments.js`, `script/IdentityCore.html`, `script/CheckinSessions.js`.
+Reference files in that project: `tools/manage-deployments.js`, `script/IdentityCore.html`,
+`script/CheckinSessions.js`. Its build/publish scripts are one of the three copies
+[`gas-static`](../../packages/gas-static/README.md) was extracted from; read the package, not them.
 
 **Reference files in this folder** (genericized starting points — copy and adapt, don't import
 as-is):
@@ -37,9 +46,10 @@ as-is):
 - [`gis-identity-client.html`](gis-identity-client.html) — the matching client-side GIS
   sign-in snippet (renders the Google button, decodes the token for display only, hands it to
   `callApi('whoami', ...)` for server-side verification).
-- [`build-static-pages.js`](build-static-pages.js) / [`publish-static-pages.js`](publish-static-pages.js)
-  — the Step 5 build/publish pipeline template (version stamping, per-env `dist/`, optional
-  publish to a dedicated static-hosting repo), genericized from F3Go30's `tools/`.
+- **The build/publish pipeline is not a file in this folder.** It is the
+  [`gas-static`](../../packages/gas-static/README.md) package — install and configure it, do not
+  copy a script. This folder deliberately keeps only *page* and *backend* examples, because the
+  package owns the pipeline and never the page.
 - A working end-to-end demo tying all of the above together is published from this repo's own
   [`static/`](../../static/) folder via [`.github/workflows/deploy-pages.yml`](../../.github/workflows/deploy-pages.yml)
   — see [`static/README.md`](../../static/README.md).
@@ -180,22 +190,97 @@ load**: an async `identify` API call using the token/query params read from its 
 lightweight "identifying…" state for that gap — typically much shorter than the sandbox-boot
 latency it replaces.
 
-### Step 5 — Build and publish as their own pipeline stage
+### Step 5 — Build and publish through `gas-static`
 
-- A small build step stamps build-time values (e.g. a version string) into a placeholder in the
-  source and writes one copy per environment (SIT/PROD) into `dist/<env>/`. Keep the *source* file
-  free of environment-specific values.
-- **Publish to a dedicated static-only repo, not the main dev repo.** Coupling the static page's
-  release cadence to every push-to-main on the dev repo, and putting a public Pages site on a repo
-  that also holds unrelated source, is a mistake worth avoiding from the start — use a separate
-  repo that GitHub Pages serves directly from `main`/root, with a publish step that builds, copies
-  the target env's `dist/` folder in, commits, and pushes. That repo should hold **only** generated
-  output.
-- **Chain the publish into the existing deploy, don't make it a separate manual step.** If the GAS
-  web app and the static page share one version/build counter, a static-only publish that bypasses
-  the real deploy would either reuse a stale build stamp or double-bump the counter. Call the
-  static-publish script automatically as the last step of `deploy()`, publishing only the env that
-  was actually just deployed.
+**Do not write a build or publish script.** Every project that did wrote the same three steps —
+stamp, publish, verify — and the four copies had already diverged before the third one shipped.
+[`packages/gas-static`](../../packages/gas-static/README.md) is that pipeline as a package; the
+consumer writes config, not code.
+
+The principles the package encodes, stated once so you know what you are getting:
+
+- **The source file stays environment-agnostic.** Build-time values land in
+  `var STATIC_X_ = null;` placeholders, one stamped copy per environment into `dist/<env>/`.
+- **Publish to a dedicated static-only repo**, never the main dev repo. Coupling the page's release
+  cadence to every push-to-main, and putting a public Pages site on a repo that also holds source,
+  is a mistake worth avoiding from the start. That repo holds **only** generated output.
+- **Chain the publish into the deploy; never run it standalone.** The page and the backend are one
+  release sharing one version counter, so a standalone publish either reuses a stale stamp or
+  double-bumps. `deployHooks()` runs build → publish → assert as the last step of the deploy that
+  just landed the backend, publishing only the env actually deployed.
+- **A stale publish fails the deploy.** All three hooks are `required: true`, and
+  `assertPublishedBuild` polls the live `version.json` for the `version`, the `env` *and* the
+  `webappUrl` it should be pointing at. Two halves that disagree do not ship.
+
+`tools/static-pages.js` is the whole of the build/publish config:
+
+```js
+#!/usr/bin/env node
+const { runStatic } = require('gas-static');
+
+module.exports = runStatic({
+  root: __dirname + '/..',
+  projectName: 'DemoApp',                  // must match this project's entry in the host repo's PUBLISHERS.md
+  srcDir: 'static-pages/src',
+  distDir: 'static-pages/dist',
+  stampedPages: ['index.html'],            // default: every .html at srcDir's root
+  copyAssets: true,                        // default: everything else under srcDir, verbatim
+  webappUrl: { from: 'buildInfo', file: 'src/Version.js', envField: 'env' },
+  placeholders: {                          // project-specific stamps, raw-token substitution
+    STATIC_THEME_: (ctx) => THEME[ctx.env],
+  },
+  envs: {
+    sit:  { deployTarget: 'test',       repoKey: 'staticRepoPath', dest: 'pub/app-sit', label: 'SIT' },
+    prod: { deployTarget: 'production', repoKey: 'staticRepoPath', dest: 'pub/app',     label: 'PROD' },
+  },
+  liveUrl: (env) => `https://example.github.io/Static/pub/app${env === 'sit' ? '-sit' : ''}/`,
+});
+```
+
+`webappUrl.from` supports **`buildInfo` only**, and that is a decision, not a gap: it reads the
+`/exec` URL out of the `BUILD_INFO` literal the deploy just stamped, so a published page cannot
+name a deployment this deploy did not land in, and env agreement is asserted before anything is
+written. Reading a cached deployment ID at build time reconciles against nothing and can bake a
+dead URL into a live page. See [`adr/0001`](../../adr/0001-webapp-url-from-build-info-only.md).
+
+Chaining it into the deploy is two lines in `manage-deployments.js`:
+
+```js
+const staticPipeline = require('./tools/static-pages.js');
+
+runCli({
+  // …
+  postDeploy: staticPipeline.deployHooks(),   // build -> publish -> assertPublishedBuild
+  extraRows:  staticPipeline.summaryRows(),   // the "Static page" row in the deploy summary
+});
+```
+
+Full config reference, the `version.json` contract and the assertion's options:
+[`packages/gas-static/README.md`](../../packages/gas-static/README.md).
+
+**The static host repo declares who publishes what — register your folder before you publish.**
+A shared host repo receives generated output from several project repos across more than one
+Google account, and a publish begins by deleting its destination folder. The guard is a
+`PUBLISHERS.md` at the host repo root: a human half (the repo is generated-only, never
+hand-edited, and each folder's content is owned 100 % by its originating project repo) plus a
+fenced JSON ownership map the package reads — the **first** ` ```json ` fence in the file:
+
+```json
+{
+  "pub/app":     { "project": "DemoApp", "env": "prod", "url": "https://example.github.io/Static/pub/app/" },
+  "pub/app-sit": { "project": "DemoApp", "env": "sit",  "url": "https://example.github.io/Static/pub/app-sit/" }
+}
+```
+
+`publishEnv` refuses a `dest` with no exact entry, and refuses one registered to a different
+`project` than the config's `projectName` — so a new folder is a deliberate, reviewed two-line
+edit in the host repo rather than an `rm -rf` nobody saw. Structural checks (no empty, absolute,
+`..`, outside-`repoRoot`, `repoRoot` itself, or `.git`-containing dest) hold even where no
+manifest exists yet. Because each folder is owned by exactly one repo, a content conflict is
+impossible, which is what makes the automatic `git fetch` + `git pull --rebase --autostash` before
+the publish commit safe — and it is required, since another project's push moves the shared
+branch. See [`adr/0003`](../../adr/0003-publish-ownership-manifest.md) and
+[`packages/gas-static/README.md`](../../packages/gas-static/README.md) §Publish safety.
 
 ### Step 6 — Regression-test both front ends against the same live backend
 
@@ -583,11 +668,20 @@ Beyond the numbers:
 - [ ] Add a `<link rel="icon">`, pointed at one canonical hosted image location.
 - [ ] If identify can happen via a client-side form (not just a pre-existing token in the URL),
       `history.replaceState` a bookmarkable URL once it resolves.
-- [ ] Build to per-environment output with a stamped version; keep the source file
-      environment-agnostic.
-- [ ] Publish to a dedicated static-only repo/host, not the main dev repo's own Pages config.
-- [ ] Chain the publish step into the existing deploy automation, sharing one version/build counter
-      — don't make it a separately-run, separately-versioned step.
+- [ ] Adopt [`gas-static`](../../packages/gas-static/README.md) for build/publish/verify — write
+      `tools/static-pages.js` as config, not a copied script. Keep the source file
+      environment-agnostic; the package writes per-env `dist/` with the version stamped in.
+- [ ] Publish to a dedicated static-only repo/host, not the main dev repo's own Pages config, and
+      **register your `dest` folder in that repo's `PUBLISHERS.md`** (with a `projectName` matching
+      it) before the first publish.
+- [ ] Chain the publish into the deploy with `deployHooks()` + `summaryRows()`, sharing one
+      version/build counter — never a separately-run, separately-versioned step.
+- [ ] Satisfy all six requirements of [the static page interface
+      contract](#the-static-page-interface-contract) — the page's own build in the footer, the
+      server version on a response it already makes, both versions plus a reload on mismatch,
+      version-keyed dismissal, unbuilt ≠ stale, and `clientVersion` on every POST.
+- [ ] Run [the security pre-flight](#the-security-boundary-this-creates--run-this-pre-flight-before-flipping-the-manifest)
+      before flipping the manifest to `ANYONE_ANONYMOUS`.
 - [ ] Add a regression test that exercises the static page from a genuinely different origin against
       a live deployment, plus a "the original GAS page still works" guard in the same suite.
 - [ ] **iOS/Safari storage:** confirm any saved-identity token / bookmark in `localStorage` survives
