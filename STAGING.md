@@ -56,12 +56,14 @@ everything with no error. Use `bdls --stage '<glob>'` for wildcard stage matchin
 | 2 | `convert-rcv` | `GAS-Core-d7i` | ✓ | Convert RankChoiceVoting to gas-static (F7a) |
 | 3 | `convert-gas` | `GAS-Core-rgh` | ✓ | Convert GActionSheet to gas-static (F7b) |
 | 4 | `convert-f3go30` | `GAS-Core-hek` | ○ | Convert F3Go30; settle CSP/static-urls/`from:'resolve'`+CLI (F7c) |
-| 5 | `libidentity-and-method` | `GAS-Core-f3d` | ○ | Extract `libs/LibIdentity` from PracticeMix's verifier (F12) |
+| 5 | `libidentity-and-method` | `GAS-Core-na8` | ○ | `libs/LibIdentity`: canonical `Assertion_verify` for brokered identity |
 | 5 | `libidentity-and-method` | `GAS-Core-dof` | ○ | Validate and land the staged-plan skill (F21) |
+| — | — | `GAS-Core-f3d` | ✗ | ~~Extract `libs/LibIdentity` from PracticeMix's verifier (F12)~~ — closed **not planned** 2026-08-26 |
+| — | — | `GAS-Core-dns` | ○ | GasLogger PII policy vs. identity call sites — owner decision, see *Escalation* |
 | — | `drive-direct-read` | `GAS-Core-emk` | ⏸ | PracticeMix: direct Drive read primary, base64 fallback (F16) |
 | — | `managed-host-checkout` | `GAS-Core-bsi` | ○ | `gas-static`: managed host checkout, so `staticRepoPath` stops being required |
 
-**Status key:** ○ open · ◐ in progress · ✓ closed · ● blocked · ⏸ held · ❄ deferred
+**Status key:** ○ open · ◐ in progress · ✓ closed · ✗ closed not-planned · ● blocked · ⏸ held · ❄ deferred
 
 `drive-direct-read` is held and carries no `#` — it is not in the execution order. See *Escalation*.
 
@@ -122,23 +124,76 @@ conversions already in hand is strictly better than deciding them with none.
 
 Two beads, deliberately paired.
 
-**Deliverable — architecturally significant.** `GAS-Core-f3d`: the identity verifier's sixth copy
-collapses into one library, with allowlist posture as a *declared option* rather than a semantic each
-copy must remember to invert; 26 denial-branch tests are the oracle. `GAS-Core-dof`: **method, not
-product** — answers whether a skill actually fires where a document does not, files the
-`staged-plan` skill's defects in DevStandard's tracker, and cites this conversion as the skill's
-validation evidence.
+**Re-scoped 2026-08-26.** This stage held `GAS-Core-f3d` until the review recorded in
+`/tmp/HANDOFF-2608.md` inverted it. `f3d` is closed **not planned**, unimplemented; `GAS-Core-na8`
+takes its slot. See *The identity decision* below before opening this stage — the two beads solve
+the same problem by different mechanisms and it is easy to reopen the wrong one.
 
-**Why paired:** `f3d`'s 26 existing tests make the extraction mechanical, leaving room in the session
+**Deliverable — architecturally significant.** `GAS-Core-na8`: the *brokered* verifier stops being a
+"reference implementation target apps copy" and becomes one library. NUUC-Dispatch keeps
+`Assertion_issue` and the `aud`→`kid` registry; GActionSheet's copy-pasted verifier
+(`src/AccessControl.js`) is diffed against the reference, then deleted in favour of the library. The
+~13 fail-closed verify-side tests in `NUUC-Dispatch/test/assertion.test.js` are the oracle, and
+`docs/interfaces/signed-identity-assertion.md` is promoted to an estate-wide contract.
+`GAS-Core-dof`: **method, not product** — answers whether a skill actually fires where a document
+does not, files the `staged-plan` skill's defects in DevStandard's tracker, and cites this
+conversion as the skill's validation evidence.
+
+**Why paired:** `na8`'s existing tests make the extraction mechanical, leaving room in the session
 for `dof`, which is an hour of work in a different repo and depends on nothing here. They share no
 files, so neither crowds the other.
 
-**Blocked externally:** `f3d` waits on **PracticeMix P6**, which is outside this plan. If P6 has not
-landed when this stage comes up, run `dof` alone and re-queue `f3d` as its own stage.
+**No external blocker.** `f3d` waited on **PracticeMix P6**; that dependency died with it. `na8`
+touches GAS-Core, NUUC-Dispatch and GActionSheet only — all three are in hand — so this stage can
+open immediately, and no longer needs the "run `dof` alone if P6 hasn't landed" fallback.
+
+**Do not batch `GAS-Core-dns` into this stage.** It is an owner decision, not work; see *Escalation*.
 
 **Work-log:** one entry covering both beads. It must still carry each bead's own *Found* /
 *Next stages must know* / *Deliberately not done* — batching changes when the entry is written, not
 what it contains. Commit-and-push remains per-stage regardless.
+
+#### The identity decision — 2026-08-26
+
+Two mechanisms solve the identical problem (identify a visitor via Google without requesting an
+OAuth access token to their Drive data), both over the same primitive: a GIS ID token on the
+non-sensitive `openid`/`email`/`profile` scopes. The difference is **where the GCP-setup cost
+lands**.
+
+| | Brokered — **canonized** | Direct per-app — **not canonized** |
+|---|---|---|
+| Who verifies | NUUC-Dispatch verifies once, then mints an HS256 assertion downstream apps check | Every app calls `tokeninfo` itself |
+| GCP setup | One project, one Web OAuth client, one consent screen for the estate (`auth-dispatch-503217`, 2026-07-22) | Each consuming app registers its own, independently |
+| Consumers today | GActionSheet | PracticeMix (dormant), NUUC-Dispatch internally |
+| Proven? | Yes — live, in production | **No.** Never run end-to-end anywhere |
+| Bead | `GAS-Core-na8` — proceeds | `GAS-Core-f3d` — closed not planned |
+
+**Decided:** GAS-Core canonizes the brokered path only.
+
+**Deliberately not canonized:** the direct/self-contained verifier. It is a real pattern and the two
+copies of it stay exactly where they are — but there is no second consumer for it and none planned,
+so it earns no library. **Do not reopen this as "extract both."**
+
+**Why `f3d` lost, given its AC said it would close `na8`:** `f3d` proposed canonizing the
+*less*-proven mechanism. PracticeMix's gate has never run: `IDENTITY_REQUIRED_ = false`
+(`Api.js:41`), `GIS_CLIENT_ID` has never been set (PracticeMix `atc-flg`), the static page has no
+GIS sign-in UI, and `callApi()` never sends an `idToken`. Its "26 tests, verified" are unit tests
+against an injected fake `ctx` — `makeIdentityContext_`, the only real `UrlFetchApp` /
+`PropertiesService` path, has never been exercised. Meanwhile the proven alternative was already
+provisioned and sitting outside `f3d`'s scope, and `f3d` would have left GActionSheet's copy-pasted
+verifier untouched.
+
+**One idea survived the close, and is now an AC line on `na8`:** failure posture as a *declared
+option* rather than a semantic each copy must remember to invert.
+
+**Where the loose ends went** — nothing here is left in prose:
+
+| Finding | Disposition |
+|---|---|
+| PracticeMix could consume the broker instead of standing up its own client | PracticeMix `atc-mnt` (P4, **unscheduled**). Mutually exclusive with `atc-t6w`; both left open on purpose, whichever runs closes the other. `atc-flg` and `atc-t6w` both carry a comment saying so. |
+| Raw `email`/`sub` logged in the clear (`Identity.js:186`, `Api.js:80`) against `GasLogger.js:73-76`'s own blanket policy | `GAS-Core-dns` (P2, `human`) — see *Escalation* |
+| No `hd`/hosted-domain check exists on **either** path, so any verified Google account is admitted regardless of domain | Recorded, not fixed. AC line on `na8` requires the handoff to say so. If domain restriction is ever wanted it is new work, and it belongs at the broker. |
+| Canonizing self-contained identity detection as its own pattern | **Out of scope, no plans.** Left as-is deliberately; captured in `bd remember` key `identity-canonical-path-is-brokered`. |
 
 ---
 
@@ -163,6 +218,7 @@ Owner decisions are **not** parked in prose. They carry the `human` label and su
 | Bead | Decision needed |
 |---|---|
 | `GAS-Core-e5z` | Retire the `gas-deploy` `postFn` transport override once PracticeMix is `ANYONE_ANONYMOUS`. Revisit at the next `gas-deploy` breaking change. |
+| `GAS-Core-dns` | GasLogger's policy (`GasLogger.js:73-76`) forbids a raw email in any logged payload and ships `maskPiiForLog_()`; PracticeMix's `Identity.js:186` and `Api.js:80` log `email`/`sub` in the clear anyway, deliberately, to serve the audit goal ADR-0002 suspended. Either carve a stated exception into the policy or mask at both call sites — the policy must not say one thing while the shipped code does another. Settle before any identity code becomes a library everyone imports. |
 
 **Resolved 2026-08-25 — `GAS-Core-emk` (`drive-direct-read`, still ⏸):** the sharing decision is
 answered. The user is assumed to have access to the practice-track folders/files via either
@@ -439,7 +495,7 @@ contributed came back active, confirmed pre-deploy: building `prod` against a TE
 
 ### 4 · `convert-f3go30` — *not started*
 
-### 5 · `libidentity-and-method` — *not started*
+### 5 · `libidentity-and-method` — *not started* (re-scoped 2026-08-26, see the stage above)
 
 ### `drive-direct-read` — ⏸ held
 
