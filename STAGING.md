@@ -53,12 +53,13 @@ everything with no error. Use `bdls --stage '<glob>'` for wildcard stage matchin
 | # | Stage | Bead | Status | Title |
 |---|---|---|---|---|
 | 1 | `pmix-prod` | `GAS-Core-gne` | ✓ | PracticeMix P5b: PROD deploy, `pub/pmix`, start retirement clock |
-| 2 | `convert-rcv` | `GAS-Core-d7i` | ○ | Convert RankChoiceVoting to gas-static (F7a) |
+| 2 | `convert-rcv` | `GAS-Core-d7i` | ✓ | Convert RankChoiceVoting to gas-static (F7a) |
 | 3 | `convert-gas` | `GAS-Core-rgh` | ○ | Convert GActionSheet to gas-static (F7b) |
 | 4 | `convert-f3go30` | `GAS-Core-hek` | ○ | Convert F3Go30; settle CSP/static-urls/`from:'resolve'`+CLI (F7c) |
 | 5 | `libidentity-and-method` | `GAS-Core-f3d` | ○ | Extract `libs/LibIdentity` from PracticeMix's verifier (F12) |
 | 5 | `libidentity-and-method` | `GAS-Core-dof` | ○ | Validate and land the staged-plan skill (F21) |
 | — | `drive-direct-read` | `GAS-Core-emk` | ⏸ | PracticeMix: direct Drive read primary, base64 fallback (F16) |
+| — | `managed-host-checkout` | `GAS-Core-bsi` | ○ | `gas-static`: managed host checkout, so `staticRepoPath` stops being required |
 
 **Status key:** ○ open · ◐ in progress · ✓ closed · ● blocked · ⏸ held · ❄ deferred
 
@@ -259,7 +260,117 @@ assumed — see *Found*.
   is a config change that does not belong inside a production deploy. The dual-run evidence on
   TEST (`atc-mta`) is unchanged and is what the retirement criterion rests on.
 
-### 2 · `convert-rcv` — *not started*
+### 2 · `convert-rcv` — ✓ closed 2026-08-26
+
+**Done.** RankChoiceVoting runs on `gas-static`. `tools/build-static-pages.js` (161 lines) and
+`tools/publish-static-pages.js` (136) are deleted, replaced by a `tools/static-pages.js` that is
+pure config; `test/test_build_static_pages.js` went with them. Verified by a full SIT deploy,
+both gates green:
+
+```
+🪝 static publish…
+   copied static-pages/dist/sit -> ../F3Static/ballot/sit
+   d6808bf..5f634ed  main -> main
+🪝 static verify (assertPublishedBuild)…
+     attempt 1: sit serving 0.1.6.4, waiting for 0.1.6.5...   (…8 polls)
+   ✅ https://f3go30.github.io/static-pages/ballot/sit/ serving v0.1.6.5 (sit) → https://script.google.com/macros/s/AKfycbwRGVywtwcP9zA…C2Ef7uA/exec
+✅ SIT verified — serving v0.1.6.5 (target SIT)
+```
+
+Summary block, including S9's version row (last line):
+
+```
+🧪  SIT deploy summary
+   Product version: v0.1.6.5
+   Deployment ID:   AKfycbwRGVywtwcP9zAS2HvOJDlgBOa7t_H6l98yKBhR4fWzacDRvAg62fd5HFdhQ97C2Ef7uA
+   Revision:        @38
+   Static page:     https://f3go30.github.io/static-pages/ballot/sit/
+   Spreadsheet:     https://docs.google.com/spreadsheets/d/1RCQlZ8FH5fdmh3ias5iIrttnD_IVLvctrMGvUNVdWeA/edit
+   Tooling:         gas-deploy v1.4.0 · gas-static v1.3.1
+```
+
+`smokeTestStaticApi.js`: all 18 steps pass. The `?cmd=ballot` tap-through serves
+`https://f3go30.github.io/static-pages/ballot/sit/?cmd=ballot&id=Smoke`, confirmed in a real
+browser — that is `_staticPagesBaseUrl_` reading `BUILD_INFO.staticUrl` rather than its three
+hardcoded URLs.
+
+The Deliverable line above stands, with one correction: it said the stage "deletes RCV's two
+hand-rolled build/publish scripts and elevates `measure-first-paint.js`", both of which happened —
+but it framed the ADR-0002 validation as the thing that *might* need a package change. The package
+that needed changing was `gas-deploy`, not `gas-static`, and `gas-static` needed nothing at all.
+
+**Found.**
+- **ADR-0002's content list described the wrong file** — *fixed now, `adr/0004`.* ADR-0002 said the
+  committed half holds "envs, anchors, labels, counters, static destinations". Every one of those
+  was **already** in a committed, reviewable file — the project's JS config module — and had never
+  been in `local.settings.json`, so none of them was drifting per machine, which is the failure
+  ADR-0002 §Context exists to cure. What *was* drifting: RCV's three `*ScriptId`s and three
+  `*SheetId`s, re-entered by hand on every machine and reviewed by nobody. ADR-0004 narrows the
+  committed half to **identifiers of external resources** and leaves declarations in the JS module,
+  so the packages keep one declaration mechanism instead of two. ADR-0002 is `Superseded`; its
+  Context/Decision/Consequences are byte-untouched. `adr-quality-check` run, all five steps pass.
+- **The static host's URL had three copies, one of them unreachable from the others** — *fixed now.*
+  `manage-deployments.js`'s `STATIC_ENTRY_BASE_URL`, `publish-static-pages.js`'s `DEST_MAP`, and
+  `script/ApiBridge.js`'s `_staticPagesBaseUrl_`. The third is GAS-side and cannot `require()` the
+  other two, so no JS module could ever have been the single source. They are now one entry in
+  `gas-project.json`, with `liveUrl` **composed** from `pagesUrl + dest` (so the URL polled and the
+  folder published to cannot drift) and the composed value stamped into `BUILD_INFO.staticUrl` for
+  the GAS side. This is why the static host joined the identifiers in ADR-0004 rather than staying
+  a declaration — the user caught the distinction the first framing had collapsed.
+- **`gas-deploy` had no `gas-project.json` reader at all** — *fixed now, v1.4.0.* S14's handoff said
+  "whoever implements the loader owes it an explicit error" for the declared-but-absent case. All
+  three disagreement directions now fail or warn by name: a declared env with no secret throws
+  *before anything shells out* (clasp's own check fires later and knows only the key, not the env or
+  the file); a target missing from a declared `envs` block throws listing what *is* declared; a fact
+  in both files takes the committed value and warns which stale key to delete. 10 new tests.
+- **86 pre-existing `gas-deploy` tests pass unchanged**, which is the back-compat claim rather than
+  an assertion of it — a repo with no `gas-project.json` is untouched.
+- **`callWebapp.js`'s `ENV_MAP` carried `scriptIdKey` entries that nothing read** — *fixed now.*
+  Dead config, and after the split they pointed at keys that no longer exist.
+- **`.deploy-metadata.json` and `deployment-ledger/` were gitignored but still tracked** —
+  *fixed now, own commit.* Pre-existing uncommitted intent; the entries did nothing while the files
+  stayed tracked. Same `gas-deploy` per-machine records PracticeMix hit in stage 1.
+
+**Next stages must know.**
+- **`convert-gas` (stage 3) inherits a complete recipe, and it is cheaper than stage 2 was.** The
+  package changes are done and tagged; GActionSheet should need `gas-static` config only. Note it is
+  *already* the lineage-A project — it has `BUILD_INFO` and the env-agreement check today, which is
+  where both came from — so Mode A is not a conversion for it, only a hand-off.
+- **`gas-static` needed no change for a second consumer.** Both remaining conversions should treat a
+  proposed package change as a signal to re-read §Provenance first.
+- **The `gas-project.json` migration for the other four repos is smaller than ADR-0002 implied** —
+  add the committed file, delete those keys from `local.settings.json`. No config module is
+  restructured. `GAS-Core-9iu` is re-amended with this; `-8w0` and `-hl5` too.
+- **RCV is on branch `gas-deploy-stage1b-pnpm`, 9 ahead of `origin/main` and 0 behind** — a clean
+  fast-forward, unlike PracticeMix's stage-1 divergence. Not merged: that is the owner's call, and
+  nothing here needs it. Pushed to its own branch.
+- **`placeholders` handles tokens that are not `var … = null;`.** RCV stamps `data-theme="…"` and an
+  HTML comment through it. F3Go30's CSP work (stage 4) should weigh that before concluding it needs
+  a `transformPage` hook.
+
+**Deliberately not done.**
+- **The canonical-key convergence across the estate.** RCV renamed `staticPagesRepoPath` →
+  `staticRepoPath` and `nuucStaticPagesRepoPath` → `nuucStaticRepoPath` because it was touching them
+  anyway; F3Go30, GActionSheet and NUUC-Dispatch are untouched, and RCV's
+  `GAS_LOGGER_PARENT_FOLDER_ID` keeps its shouty spelling rather than becoming `gasLogFolderId`.
+  That is `GAS-Core-9iu`'s job, not a conversion's.
+- **The managed host checkout** — *bead `GAS-Core-bsi`, filed, blocked on this stage.*
+  `staticRepoPath` is now the only machine fact left in RCV's config, and it is reproducible: both
+  host repos are plain HTTPS remotes authenticating through the global `gh auth git-credential`
+  helper, so `gas-static` could clone a sparse checkout of just this project's own folder and drop
+  the key entirely. Declined here to keep the stage a conversion — it touches the publish path that
+  `rm -rf`s directories. `gas-project.json` now declares each host's `repo` slug, so the
+  prerequisite is in place.
+- **No PROD or NUUC deploy.** The AC asked for the test env, and both are configured but unproven on
+  the new pipeline. NUUC in particular exercises the second host repo and a second Google account.
+- **No Playwright suite for RCV.** The `_staticPagesBaseUrl_` check above was a standalone script
+  borrowing PracticeMix's Chromium; RCV has no `@playwright/test` of its own, and adding one is not
+  a conversion's business.
+- **`measure-first-paint.js` not run for RCV.** It is elevated and generalised (`--ready`, `--static`,
+  `--webapp` are arguments now), but RCV's own before/after number was never the point — the
+  before-front-end is already retired here.
+
+### 3 · `convert-gas` — *not started*
 
 ### 3 · `convert-gas` — *not started*
 
