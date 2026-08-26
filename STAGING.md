@@ -54,7 +54,7 @@ everything with no error. Use `bdls --stage '<glob>'` for wildcard stage matchin
 |---|---|---|---|---|
 | 1 | `pmix-prod` | `GAS-Core-gne` | ✓ | PracticeMix P5b: PROD deploy, `pub/pmix`, start retirement clock |
 | 2 | `convert-rcv` | `GAS-Core-d7i` | ✓ | Convert RankChoiceVoting to gas-static (F7a) |
-| 3 | `convert-gas` | `GAS-Core-rgh` | ○ | Convert GActionSheet to gas-static (F7b) |
+| 3 | `convert-gas` | `GAS-Core-rgh` | ✓ | Convert GActionSheet to gas-static (F7b) |
 | 4 | `convert-f3go30` | `GAS-Core-hek` | ○ | Convert F3Go30; settle CSP/static-urls/`from:'resolve'`+CLI (F7c) |
 | 5 | `libidentity-and-method` | `GAS-Core-f3d` | ○ | Extract `libs/LibIdentity` from PracticeMix's verifier (F12) |
 | 5 | `libidentity-and-method` | `GAS-Core-dof` | ○ | Validate and land the staged-plan skill (F21) |
@@ -370,9 +370,72 @@ that needed changing was `gas-deploy`, not `gas-static`, and `gas-static` needed
   `--webapp` are arguments now), but RCV's own before/after number was never the point — the
   before-front-end is already retired here.
 
-### 3 · `convert-gas` — *not started*
+### 3 · `convert-gas` — ✓ closed 2026-08-26
 
-### 3 · `convert-gas` — *not started*
+**Done.** GActionSheet's team-action portal runs on `gas-static`. `scripts/build-static-portal.js`
+(179 lines) and `scripts/publish-static-portal.js` (133) are deleted, replaced by
+`scripts/static-pages.js`, pure config. Both envs verified by a full deploy:
+
+```
+TEST:  https://nuuc-it.github.io/Static/pub/AS-sit/ serving v0.2.2.10 (sit) — full CLI
+       deploy green: build, publish, assertPublishedBuild, cmd=version all passed.
+PROD:  https://nuuc-it.github.io/Static/pub/AS/ serving v0.2.3 (prod) → matching /exec,
+       cmd=version agrees (0.2.3/production).
+```
+
+Pushed to its own branch, not merged (owner's call, RCV precedent):
+`convert-gas-static-gas-core-rgh` @ `486b819` in GActionSheet.
+
+The Deliverable line above stands as written — the env-agreement guard GActionSheet originally
+contributed came back active, confirmed pre-deploy: building `prod` against a TEST-stamped
+`Version.js` threw before writing anything.
+
+**Found.**
+- **`BUILD_INFO.version` carried a display-form `'v'` prefix, which would have made every deploy
+  time out forever** — *fixed now.* `manage-deployments.js`'s stamper overrode `version` to
+  `` `v${version}` `` for display (sidebar footer, About dialogs). `gas-static` reads that field
+  verbatim into `version.json`, and `gas-deploy`'s own `assertDeployedVersion`/
+  `assertPublishedBuild` poll for the **bare** counter — `"v0.2.2.9" !== "0.2.2.9"`, never
+  converges. This is the one pre-package copy (`readBuildInfo_`/`ENV_MAP.buildInfoEnv`)
+  `gas-static`'s `webappUrl:{from:'buildInfo'}` mode and env-agreement guard were extracted FROM
+  (README §Provenance) — and it's the one copy that had drifted onto a display-form version since.
+  Fix: dropped the override; `buildInfoStamper`'s own default (bare) is what every other consumer
+  already uses. No display callsite needed a compensating change — `BUILD_INFO.version` is shown
+  verbatim everywhere it's displayed, so it now just renders without the `'v'` (cosmetic only,
+  confirmed against `test_journey.py`'s `expected_version` fixture, which reads the same file field
+  it's compared against and so is format-agnostic).
+- **PROD's `assertPublishedBuild` hit a live GitHub-wide incident, not a pipeline defect** —
+  githubstatus.com showed Pages `degraded_performance` and Actions `major_outage` while this ran;
+  the Pages build for the PROD publish stalled ~40 min instead of the usual ~1 min (every prior
+  build on `nuuc-it/Static` finished in 35–130s). The GAS side (push, redeploy, `WEBAPP_URL`) had
+  already succeeded before the CLI's 300s timeout fired and it exited 1 before the ledger write;
+  verified green by hand (`curl` against `version.json` and `cmd=version`) once the Pages build
+  cleared. `deployment-ledger/production.jsonl`'s entry for this deploy is hand-appended — same
+  schema, no CLI run to attribute it to.
+- **Another process/session ran its own `pnpm run deploy:test` mid-session, in the same checkout**
+  — visible in `deployment-ledger/test.jsonl`'s `v0.2.3.1` entry, after this conversion's own
+  verified `v0.2.2.10` run. Harmless to this bead's AC (both deploys are independently valid), but
+  this repo had unrelated concurrent work in flight (a document-export feature on
+  `tmp/pr3-pr4-combined`) and the pushed branch here forked from that in-flight branch, so it
+  carries those unrelated commits too — flagged for whoever untangles the eventual merge.
+
+**Next stages must know.**
+- **`convert-f3go30` (stage 4) inherits the same recipe as stage 2, not a new one.** No
+  `gas-static` package change was needed here either — two conversions in, the package's shape
+  holds.
+- **The `'v'`-prefix bug is GActionSheet-specific** — RCV's `BUILD_INFO.version` was already bare
+  (stage 2 found no equivalent issue). Worth a quick grep on F3Go30's stamper before assuming its
+  version format is safe by default.
+
+**Deliberately not done.**
+- **`scriptId`/`testSheetId` convergence onto `gas-project.json` only** — deferred. Two consumers
+  (`tests/conftest.py`'s `script_id` fixture, `tests/playwright/editor_helpers.js`) read
+  `local.settings.json` directly, not through `gas-deploy`'s loader, so both files still carry the
+  same values. Folding those two readers over is estate-wide key-convergence work
+  (`GAS-Core-9iu`-shaped), not a conversion's job.
+- **No Playwright suite run against the live PROD portal.** `tests/playwright/team_portal_*.test.js`
+  build against a local `dist/`; pointing them at the published CDN URL is a config change outside
+  this stage's scope.
 
 ### 4 · `convert-f3go30` — *not started*
 
