@@ -114,11 +114,52 @@ and is how an unmigrated project keeps working, but it is a **legacy override**,
 to configure a new project: point it at the canonical key and stop thinking about it. Env-name
 aliases stay supported too — F3Go30 calls its PROD target `template` — via `envAliases`.
 
+### The two config files
+
 Which of these live in a committed file rather than the gitignored one is settled by
-[ADR-0002](../../adr/0002-declared-config-two-files.md) (two files: project truth in a committed
-`gas-project.json`, machine truth and secrets in `local.settings.json`). No project migrates on
-that ADR alone; the shape is validated inside the first conversion that touches a project's config
-anyway.
+[ADR-0002](../../adr/0002-declared-config-two-files.md) (two files, split by *reviewability*), as
+narrowed by [ADR-0004](../../adr/0004-project-truth-is-identifiers-not-declarations.md) (what
+actually goes in the committed half). Supported since **v1.4.0**; validated on RankChoiceVoting.
+
+| | file | holds |
+|---|---|---|
+| **project truth** | `gas-project.json`, **committed** | Facts identical for every developer: each target's `scriptId` and `sheetId`. Scoped structurally by target key. |
+| **machine truth & secrets** | `local.settings.json`, **gitignored** | `claspAuth` and any per-target `authKey`, admin secrets, API tokens, absolute paths, and the `deploymentId` cache the deploy writes back. |
+
+```jsonc
+// gas-project.json — reviewed in git, so a wrong ID is caught once, not per machine
+{
+  "envs": {
+    "sit":  { "scriptId": "1tGLrQ…", "sheetId": "1RCQlZ…" },
+    "prod": { "scriptId": "1NJRGv…", "sheetId": "1u_S9D…" }
+  }
+}
+```
+
+Env *declarations* — labels, counters, anchors, deploy targets — stay in the JS config module. They
+were never in `local.settings.json`, so they never drifted per machine; moving them into JSON would
+add a second declaration mechanism without retiring the first. ADR-0004 records that reasoning.
+
+**gas-deploy reads only `envs.<target>.scriptId` and `.sheetId` and ignores everything else in the
+file.** A consumer may carry further per-env identifiers in the same place and read them itself:
+RankChoiceVoting adds its static host repo, that host's GitHub Pages base URL and its own published
+folder, consumed by `tools/static-pages.js` to compose `gas-static`'s config — which is why
+`gas-static` needed no change to participate.
+
+**With no `gas-project.json`, nothing changes**: every lookup degrades to the `*Key` indirection
+above, and an unmigrated project is untouched.
+
+Splitting the config means the two halves can now *disagree*, so every disagreement is surfaced by
+name rather than resolved silently:
+
+| Situation | Behaviour |
+|---|---|
+| Env declared in `gas-project.json`, no `claspAuth`/`authKey` in `local.settings.json` | **Throws** before anything shells out, naming the env, the key and both files — otherwise clasp falls back to `~/.clasprc.json`, possibly another Google account. |
+| Target missing from a declared `envs` block | **Throws**, listing the envs that are declared. |
+| A fact in *both* files, with different values | Takes the committed value and **warns**, naming the stale key to delete. |
+| Malformed `gas-project.json` | Named config error, not `Unexpected end of JSON input`. |
+
+`config.projectFile` overrides the filename.
 
 ### Deployment description & the anchor
 

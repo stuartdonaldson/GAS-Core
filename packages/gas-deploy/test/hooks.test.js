@@ -56,8 +56,8 @@ test('summary prints an explanation, never a broken URL, for every missing input
     log: () => {},
   });
   assert.match(out, /\(unresolved\)/);
-  assert.match(out, /\(nuucScriptId not set in local\.settings\.json\)/);
-  assert.match(out, /\(nuucSheetId not set in local\.settings\.json\)/);
+  assert.match(out, /\(nuucScriptId not set in gas-project\.json or local\.settings\.json\)/);
+  assert.match(out, /\(nuucSheetId not set in gas-project\.json or local\.settings\.json\)/);
   assert.match(out, /\(static hosting not configured for this target\)/);
   assert.doesNotMatch(out, /macros\/s\/null/, 'no malformed URL');
   assert.doesNotMatch(out, /spreadsheets\/d\/null/);

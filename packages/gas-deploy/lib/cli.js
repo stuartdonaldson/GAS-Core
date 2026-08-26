@@ -31,6 +31,7 @@ const { assertDeployedVersion, queryLiveVersion } = require('./verify.js');
 const { printDeploySummary } = require('./summary.js');
 const { toolingRow } = require('./tooling.js');
 const { writeLedgerEntry, writeDeployMetadata } = require('./ledger.js');
+const { loadProjectConfig, assertEnvDeclared_, assertSecretsPresent_, targetFact } = require('./project.js');
 
 function loadSettings_(settingsPath) {
   if (!fs.existsSync(settingsPath)) {
@@ -103,11 +104,20 @@ function targetContext_(config, targetKey) {
   const root = config.root;
   const settingsPath = path.join(root, config.settingsPath || 'local.settings.json');
   const settings = loadSettings_(settingsPath);
-  const scriptId = settings[target.scriptIdKey];
 
-  if (!scriptId || String(scriptId).startsWith('<')) {
-    throw new Error(`${target.scriptIdKey} is not set in local.settings.json`);
-  }
+  // The committed half of the declared-config split (adr/0002, narrowed by adr/0004). Absent for
+  // an unmigrated project, in which case every lookup below degrades to the legacy *Key
+  // indirection into local.settings.json and nothing about that project changes.
+  const project = loadProjectConfig(root, config.projectFile);
+  assertEnvDeclared_(project, targetKey);
+  // Before anything shells out: an env declared in the committed half whose secret is missing from
+  // the gitignored one must fail by name, or the split trades silent drift for silent absence.
+  assertSecretsPresent_(project, targetKey, target, settings);
+
+  const log = config.log || console.log;
+  const factCtx = { project, settings, target, targetKey, log };
+  const scriptId = targetFact('scriptId', factCtx, { required: true });
+  const sheetId = targetFact('sheetId', factCtx);
 
   return {
     target,
@@ -115,7 +125,9 @@ function targetContext_(config, targetKey) {
     root,
     settingsPath,
     settings,
+    project,
     scriptId,
+    sheetId,
     pkgPath: path.join(root, config.pkgPath || 'package.json'),
     claspPath: path.join(root, config.claspPath || '.clasp.json'),
     env: claspEnv(settings, target.authKey),
@@ -144,7 +156,7 @@ async function deploy(config, targetKey, options = {}) {
   const errorLog = config.errorLog || console.error;
   const exec = config.exec || execSync;
   const ctx = targetContext_(config, targetKey);
-  const { target, root, settings, scriptId } = ctx;
+  const { target, root, settings, scriptId, sheetId } = ctx;
   const label = target.label;
 
   log(`\n${target.emoji || '📦'}  Deploying to ${label} (${scriptId.slice(0, 12)}…)\n`);
@@ -235,7 +247,7 @@ async function deploy(config, targetKey, options = {}) {
     errorLog(`\n❌ Deploy verification failed: ${err.message}`);
     printDeploySummary({
       label, emoji: target.emoji, version, now, deploymentId, revision, scriptId,
-      scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
+      scriptIdKey: target.scriptIdKey, sheetId,
       sheetIdKey: target.sheetIdKey, extraRows: summaryRows, tooling: toolingRow(root), log,
     });
     process.exitCode = 1;
@@ -244,7 +256,7 @@ async function deploy(config, targetKey, options = {}) {
 
   printDeploySummary({
     label, emoji: target.emoji, version: verified.version, now, deploymentId, revision, scriptId,
-    scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
+    scriptIdKey: target.scriptIdKey, sheetId,
     sheetIdKey: target.sheetIdKey, extraRows: summaryRows, tooling: toolingRow(root), log,
   });
   return { ok: true, version: verified.version, deploymentId, revision };
@@ -259,7 +271,7 @@ async function summary(config, targetKey) {
   const log = config.log || console.log;
   const exec = config.exec || execSync;
   const ctx = targetContext_(config, targetKey);
-  const { target, settings, scriptId, root } = ctx;
+  const { target, settings, scriptId, sheetId, root } = ctx;
   const label = target.label;
 
   log(`\n${target.emoji || '📦'}  Reading current ${label} deployment state (${scriptId.slice(0, 12)}…)…`);
@@ -293,7 +305,7 @@ async function summary(config, targetKey) {
   const rows = (config.extraRows || (() => []))({ targetKey, target, label, settings, root });
   printDeploySummary({
     label, emoji: target.emoji, version, now, deploymentId, revision, scriptId,
-    scriptIdKey: target.scriptIdKey, sheetId: settings[target.sheetIdKey],
+    scriptIdKey: target.scriptIdKey, sheetId,
     sheetIdKey: target.sheetIdKey, extraRows: rows, tooling: toolingRow(root), log,
   });
   return { version, deploymentId, revision, live: !!live };

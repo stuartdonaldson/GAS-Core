@@ -1,5 +1,27 @@
 # Changelog — gas-deploy
 
+## 1.4.0
+
+- **`gas-project.json` — the committed half of the declared-config split** ([ADR-0002](../../adr/0002-declared-config-two-files.md),
+  narrowed by [ADR-0004](../../adr/0004-project-truth-is-identifiers-not-declarations.md)). A target's
+  `scriptId` and `sheetId` are project truth — the same for every developer — so they now live in a
+  committed file, scoped structurally by target key (`envs.sit.scriptId`), where a typo is caught in
+  review once instead of per machine. `local.settings.json` keeps machine truth and secrets: clasp
+  auth paths, admin secrets, the deployment-ID cache the deploy writes back.
+- **Nothing changes for an unmigrated project.** With no `gas-project.json` present, every lookup
+  degrades to the existing `*Key` indirection into `local.settings.json`, which stays supported as a
+  legacy override. All 86 pre-existing tests pass unchanged.
+- **Both directions of disagreement fail or report by name**, which is the cost ADR-0002
+  §Consequences named — the split trades silent drift for silent absence unless every disagreement
+  says so. An env declared in `gas-project.json` with no `claspAuth`/`authKey` in
+  `local.settings.json` throws before anything shells out, naming the env, the key and both files. A
+  target missing from a declared `envs` block throws, listing what *is* declared. A fact carried by
+  both files takes the committed value and warns, naming the stale key to delete — silently
+  preferring one would hide the very drift the split removes. A malformed `gas-project.json` is a
+  named config error, not `Unexpected end of JSON input`.
+- New `lib/project.js` (`loadProjectConfig`, `targetFact`); `config.projectFile` overrides the
+  filename. Validated on RankChoiceVoting's conversion before any other repo migrates.
+
 ## 1.3.0
 
 - **`assertDeployedVersion` settles on N consecutive agreeing reads** — `verifyOptions.settleReads`,

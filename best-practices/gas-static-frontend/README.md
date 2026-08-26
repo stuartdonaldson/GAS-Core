@@ -626,6 +626,23 @@ the same backend at the same moment:
 measurement does not show, because the static page is served `cache-control: max-age=600` + an ETag
 while `HtmlService` re-ships its ~150 KB inline on every load, uncached.
 
+**Take your own number — the tool is here.** [`measure-first-paint.js`](measure-first-paint.js)
+produces the table above for any project on this pattern. It loads both front ends in cold browser
+contexts and reports app-paint, FCP and transferred bytes per run, plus medians:
+
+```bash
+node measure-first-paint.js \
+  --webapp "$TEST_URL" \
+  --static https://example.github.io/Static/pub/app-sit/ \
+  --ready '[data-testid="selection-page"]' --runs 5
+```
+
+`--ready` is the app's own first-paint element and is the one argument worth thinking about: pick
+**markup, not data**. An element that waits on a server round trip measures the backend instead of
+the front end, which is not the cost this pattern removes. Needs `@playwright/test` and a Chromium
+install in the calling project; the webapp side usually needs a saved `storageState`
+(`PLAYWRIGHT_AUTH_STATE`), while the static side deliberately gets none.
+
 **The method matters as much as the number, because the obvious metrics are unavailable:**
 
 - **"App visible" (navigationStart → the first real app element being visible) is the only metric

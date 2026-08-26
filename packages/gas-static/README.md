@@ -281,7 +281,10 @@ re-adding something that was dropped on purpose, or re-litigating a call already
 - **RCV's theme / theme-fonts / dev-contact stamping** (`devContactFromVersionJs_`) and
   **GActionSheet's `doc.html` multi-page-per-env specifics**. Both are already expressible through
   the generic `placeholders` map and `stampedPages` list with no package change, so hardcoding them
-  would add surface for nothing.
+  would add surface for nothing. **Confirmed at RCV's conversion**: all three of its tokens went
+  through `placeholders` untouched, including the two that are not `var … = null;` declarations
+  (`data-theme="STATIC_THEME_"` and an HTML comment) — raw-token substitution covers them because
+  it makes no assumption about the token's shape.
 - **F3Go30's and RCV's deployment-ID `webappUrl` mode** — resolving `/exec` from a
   `local.settings.json` deployment ID with no `BUILD_INFO` round trip. Not a gap:
   [ADR-0001](../../adr/0001-webapp-url-from-build-info-only.md) records why a binding that is
@@ -290,11 +293,15 @@ re-adding something that was dropped on purpose, or re-litigating a call already
   `STATIC_BUILD_VERSION_` regex match) and **RCV's `smokeTestStaticApi.js` step 11**. Both are
   superseded by `assertPublishedBuild` reading `version.json`, which asserts three fields instead of
   scraping one out of a page body. A converting project retires them rather than keeping them
-  alongside.
+  alongside — RCV's step 11 was deleted at its conversion, along with the fourth hardcoded copy of
+  the static URL it needed in order to scrape.
 - **`static-urls.js` generalisation** (R9) — see below.
 - **The three source projects themselves.** G1 extracted the package and converted exactly one
   consumer (PracticeMix), deliberately: converting three at once is the mistake this shape of work
-  exists to avoid. The remaining conversions are their own stages.
+  exists to avoid. The remaining conversions are their own stages — **RankChoiceVoting is now
+  converted** (bead `GAS-Core-d7i`), leaving GActionSheet (`GAS-Core-rgh`) and F3Go30
+  (`GAS-Core-hek`). RCV's conversion needed **no change to this package**, which is the result the
+  staging deliberately sequenced it to test.
 
 ## What this package deliberately does not do
 

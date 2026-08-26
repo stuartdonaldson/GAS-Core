@@ -11,8 +11,8 @@
  *   - The deployment ID is printed **in full, never truncated** — a truncated ID cannot be
  *     pasted into call-webapp or a bug report. (Progress lines elsewhere may still abbreviate.)
  *   - A row whose input is absent prints an explanation, never a broken URL. RCV's
- *     "(sheetId not set in local.settings.json)" is the model: it names the missing key, so the
- *     reader knows what to go set.
+ *     "(sheetId not set in gas-project.json or local.settings.json)" is the model: it names the
+ *     missing key AND both places it could live, so the reader knows what to go set.
  *   - The version row carries the **server-confirmed** value from assertDeployedVersion, not the
  *     locally stamped one — the summary reports what is actually serving.
  */
@@ -48,7 +48,7 @@ function printDeploySummary({
   out.push(line_('Revision', revision ? `@${revision}` : '(unresolved)'));
   out.push(line_('Script project', scriptId
     ? `${scriptId.slice(0, 12)}…   https://script.google.com/home/projects/${scriptId}/edit`
-    : `(${scriptIdKey} not set in local.settings.json)`));
+    : `(${scriptIdKey} not set in gas-project.json or local.settings.json)`));
   out.push(line_('Webapp', deploymentId
     ? `https://script.google.com/macros/s/${deploymentId}/exec`
     : '(deployment ID unavailable)'));
@@ -60,7 +60,7 @@ function printDeploySummary({
 
   out.push(line_('Spreadsheet', sheetId
     ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit`
-    : `(${sheetIdKey} not set in local.settings.json)`));
+    : `(${sheetIdKey} not set in gas-project.json or local.settings.json)`));
   // Last, and only when supplied: provenance about the tools, not about the deployment. It is
   // here so a consumer two minor versions behind finds that out on a deploy rather than never
   // (PLAN2 F10) — pair it with the package CHANGELOGs, which say what the newer version gives.

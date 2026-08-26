@@ -1,8 +1,9 @@
 # ADR-0002: Declared configuration lives in two files, not one
 
-Status: Accepted
+Status: Superseded
 Date: 2026-08-24
 Supersedes: [None — new decision]
+Superseded by: [ADR-0004](0004-project-truth-is-identifiers-not-declarations.md)
 
 ## Context
 
