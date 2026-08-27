@@ -70,3 +70,13 @@ bd.db
 # since no pattern above ignores them.
 issues.jsonl
 interactions.jsonl
+
+# --- added by bd-config-audit ---
+proxieddb/
+last_pull
+.auto-import-issues.jsonl
+proxied_server_client_info.json
+dolt-monitor.*
+dolt-pprof/
+
+# bd-policy: ignore-jsonl
