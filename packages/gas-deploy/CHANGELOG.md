@@ -1,5 +1,12 @@
 # Changelog — gas-deploy
 
+## 1.4.1
+
+- **`assertDeployedVersion` default `timeoutSec` doubled, 60 → 120.** Real deploys were observed
+  taking longer than 60s to settle (edge propagation lag past what PLAN2 F8's settling logic
+  assumed). Projects that don't pass `verifyOptions.timeoutSec` now get the longer budget for
+  free; anything already passing its own `timeoutSec` is unaffected.
+
 ## 1.4.0
 
 - **`gas-project.json` — the committed half of the declared-config split** ([ADR-0002](../../adr/0002-declared-config-two-files.md),

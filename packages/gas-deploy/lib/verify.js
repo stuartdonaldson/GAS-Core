@@ -45,7 +45,7 @@ function sleep_(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); 
  */
 async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarget, options = {}) {
   const {
-    postFn = post, intervalSec = 5, timeoutSec = 60, settleReads = 2, sleep = sleep_, log = () => {},
+    postFn = post, intervalSec = 5, timeoutSec = 120, settleReads = 2, sleep = sleep_, log = () => {},
   } = options;
   const url = execUrl(deploymentId, 'version');
   const startedAt = Date.now();
