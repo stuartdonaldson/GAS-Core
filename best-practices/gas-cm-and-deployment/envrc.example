@@ -1,0 +1,57 @@
+# envrc.example — GAS-Core standard direnv environment for a GAS repo.
+#
+# Copy to the repo root as `.envrc`, edit the marked values, then `direnv allow`.
+#
+# WHY THIS SHIPS AS `envrc.example` AND NOT AS A LIVE `.envrc`:
+# `.envrc` is excluded by the global gitignore (~/.gitignore_global), so a live
+# one here would never be committed and this template would not exist. Each repo
+# creates its own untracked `.envrc` from this file. If you change the standard,
+# change THIS file and tell the repos to re-copy — four repos already drifted by
+# editing only their own copies.
+#
+# WHY direnv AT ALL: every value below is a machine-local path or credential
+# selector. Putting them in the repo would be wrong (they differ per machine);
+# leaving them to be exported by hand means a test run silently uses the wrong
+# Python, or — much worse — clasp silently falls back to ~/.clasprc.json and
+# pushes to a DIFFERENT Apps Script project than the one this repo owns.
+
+# --- Python virtualenv (REQUIRED if the repo has any Python) ----------------
+# The WSL2/Linux path per ~/.claude/CLAUDE.md's venv convention. Windows (pwsh)
+# uses c:\dev\venvs\uv1\scripts\python.exe; both must be stated explicitly
+# wherever this is documented, never one "the" path.
+source /mnt/c/dev/venvs/uv1/bin/activate
+
+# --- Toolchain paths (REQUIRED) ---------------------------------------------
+export PYTEST_BIN=/mnt/c/dev/venvs/uv1/bin/python
+export CLAUDE_BIN=claude
+
+# --- clasp credential (REQUIRED for any repo that deploys) -------------------
+# EDIT THIS. Names the clasp credential file this repo deploys with. Without it,
+# clasp falls back to ~/.clasprc.json — which may be authenticated as a
+# different account, or point at a different script project, and the push
+# SUCCEEDS. That is the failure this line exists to prevent, and it is why
+# manage-deployments.js / the gas-deploy package sets it on every clasp call
+# rather than trusting the ambient default.
+#
+# Use one file per Google account, not one per repo:
+#   ~/.clasprc-<account>.json
+export clasp_config_auth=~/.clasprc-CHANGEME.json
+
+# --- DevStandard path (REQUIRED — DevStandard ADR-0003) ----------------------
+# Role docs and gate skills live in DevStandard, not in project repos. The gate
+# skills (merge-gate, increment-gate, bootstrap Preflight P1) check the literal
+# environment variable, so declaring the path only in a CLAUDE.md table is not
+# enough — it must actually be exported.
+export DEVSTANDARD=/mnt/c/dev/DevStandard
+
+# --- Shared Playwright auth (OPTIONAL — omit until a UI suite exists) --------
+# Account-identity storage-state files, shared across projects. WHICH account
+# plays which role in this repo belongs in local.settings.json
+# ("playwrightAccounts"), never here — this is a path, not a role assignment.
+# export PLAYWRIGHT_AUTH_DIR=~/.playwright
+
+# --- Anything else? ----------------------------------------------------------
+# Before adding a line: a SECRET or a per-repo id belongs in local.settings.json
+# (gitignored, readable by both the Python and Node tooling). `.envrc` is for
+# machine-local PATHS and TOOL SELECTORS that must be in the process environment
+# because a third-party tool reads them from there.

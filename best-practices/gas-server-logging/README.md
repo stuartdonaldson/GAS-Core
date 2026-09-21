@@ -1,10 +1,18 @@
 # Best Practice: GAS Server-Side Logging (Axiom + Drive Fallback)
 
+> **This is the standard, not a starting point.** `GasLogger.js`, `AxiomLogger.js`,
+> `tools/query_axiom.py` and `tools/axiom_report.py` are copied into a repo verbatim.
+> Everything repo-specific is configuration: `AXIOM_HOISTED_KEYS` + `AXIOM_APP_NAME`
+> in `AxiomLogger.js`, and `local.settings.json`. If you need to change one of these
+> files, change it **here** and re-copy — four repos already diverged by editing
+> their own copies, which is why this folder was rewritten. See **The Four Standing
+> Rules** below before adopting.
+
 ## Overview
 
 Google Apps Script execution logs are ephemeral — visible only in the Apps Script editor, discarded after execution, and not reachable from outside the GAS environment. This pattern bridges that gap with two sinks, but **only one is active at a time**:
 
-1. **Axiom** (recommended) — a hosted log-query service. Its driver lives entirely in `AxiomLogger.js`; copy it in alongside `GasLogger.js` and once `AXIOM_TOKEN`/`AXIOM_DATASET` script properties are set, `flush()` POSTs exclusively to Axiom. Query it with `query-axiom.py`/`gas-log-helpers.js` or the Axiom web UI. No local Drive mount needed, works from CI.
+1. **Axiom** (recommended) — a hosted log-query service. Its driver lives entirely in `AxiomLogger.js`; copy it in alongside `GasLogger.js` and once `AXIOM_TOKEN`/`AXIOM_DATASET` script properties are set, `flush()` POSTs exclusively to Axiom. Query it with `tools/query_axiom.py`/`gas-log-helpers.js` or the Axiom web UI. No local Drive mount needed, works from CI.
 2. **Drive NDJSON files** (used only when no other driver is configured) — `GasLogger.js`'s own built-in driver, no extra file needed. GAS writes entries to a Drive folder mapped locally via Drive for Desktop. Used by Playwright/Node tests via `gas-log-helpers.js`'s file driver.
 
 `flush()` routes to **exactly one** driver — it does not write Drive *and* POST to Axiom, and a failed Axiom POST does **not** fall back to writing the Drive file. This is intentional, not a corner cut: see "Why Axiom-exclusive, not best-effort" below. **You can adopt this pattern with Drive only and add Axiom later with zero code changes to GasLogger.js** — just copy in `AxiomLogger.js` and set the two script properties; `flush()`'s behavior switches automatically. See "Sink Architecture" below for how a third driver would be added, and why that isn't built as a full plugin registry yet.
@@ -17,8 +25,8 @@ Google Apps Script execution logs are ephemeral — visible only in the Apps Scr
 
 1. Copy `GasLogger.js` into your GAS project's `src/` (or equivalent). This alone gives you the Drive driver — no Axiom setup required.
 2. Copy `AxiomLogger.js` alongside it if you want Axiom as a sink. Skip if Drive-only is enough for now; add it later with zero changes to `GasLogger.js`.
-3. Copy `gas-log-helpers.js` **and** `axiom-log-helpers.js` into your test directory (for Node/Playwright tests) — `gas-log-helpers.js` requires the latter, so both are needed even if you're only using the file driver today. Skip both if you only need `query-axiom.py`'s CLI querying.
-4. Copy `query-axiom.py` into your project (for pulling logs back down from the command line). Skip if you're only using Drive.
+3. Copy `gas-log-helpers.js` **and** `axiom-log-helpers.js` into your test directory (for Node/Playwright tests) — `gas-log-helpers.js` requires the latter, so both are needed even if you're only using the file driver today. Skip both if you only need `tools/query_axiom.py`'s CLI querying.
+4. Copy the whole `tools/` directory into your project's `tools/` (for pulling logs back down from the command line, and for building a cooked activity report). `query_axiom.py` and `axiom_report.py` are copied **verbatim** — see **Dataset Convention** and **Cooked Reporting** below. Skip if you're only using Drive.
 5. Copy `local.settings.example.json` → `local.settings.json` (already gitignored at the repo root — verify your project's `.gitignore` covers it too) and fill in values.
 6. Follow **One-Time Setup** below (Drive folder first; Axiom is optional and can be done later).
 7. Call `GasLogger.log(tag, data)` at points of interest and `GasLogger.flush()` in a `finally` block at the end of every entry point (`doGet`, `doPost`, menu-triggered functions, etc.) — or just wrap the entry point in `GasLogger.run(fn)`, see **How to Use the Logger** below.
@@ -74,6 +82,124 @@ Rules of thumb:
 
 ---
 
+## The Four Standing Rules
+
+These are not style preferences. Each one is a production incident that already
+happened on one of the projects this pattern came from. A repo that "simplifies"
+any of them re-opens the incident.
+
+### 1. One dataset per repo (Dataset Convention)
+
+**An Axiom dataset caps at 257 fields.** Every distinct key that has EVER appeared
+at the top level of an ingested row mints a permanent column, and once the cap is
+reached Axiom **silently drops** new fields at ingest — the POST still returns 2xx.
+
+Two independent mitigations, both required:
+
+- **`axiomDataset` is this repo's own dataset**, named after the repo, lowercased
+  (`gactionsheet`, `ndocs`, `nuuts-shell`, `f3go30`). Do **not** point a second
+  project at an existing dataset to "keep it all in one place": you are spending a
+  shared, exhaustible budget, and the repo that exhausts it is not the repo that
+  breaks. The shared `nuuts` dataset is already at the cap and is the reason this
+  rule is written down.
+- **Row shape nests the payload** under one `data` map field (`AxiomLogger.js`
+  rule 1). A `side`/`app`/`env`/`version` set plus a short, fixed
+  `AXIOM_HOISTED_KEYS` list are the only top-level columns. Configure `data` as a
+  **map field** in Axiom's dataset settings (a one-time web-UI action) or the
+  nesting does not actually collapse into one field.
+
+Cross-dataset queries still work — every row carries `app`, so a union across two
+datasets reads correctly.
+
+### 2. Two tokens, never one
+
+| Setting | Token type | Lives | Used by |
+|---|---|---|---|
+| `axiomToken` | **ingest only** (write) | GAS script property `AXIOM_TOKEN`, server-side | `AxiomLogger.write()` |
+| `axiomQueryToken` | **read only** (query) | `local.settings.json` on a developer laptop | `tools/query_axiom.py`, `axiom-log-helpers.js` |
+
+Both are named in `local.settings.json` so the deploy hook that pushes
+`AXIOM_TOKEN` has something to read, but the ingest token must never be what a
+query tool uses, and the query token must never reach a script property. An
+ingest token cannot query, so a query tool handed the wrong one fails with a
+401/403 — `query_axiom.py` says so explicitly in that case rather than leaving
+you to guess.
+
+### 3. Environment discrimination: the `env` column
+
+`GasLogger.log()` stamps **`env`** on every entry from `BUILD_INFO.env`, drawn
+from the vocabulary **`dev` | `test` | `prod`**. `tools/query_axiom.py --env`
+filters on it; `sit` is an accepted synonym for `test` on the command line.
+
+Why the emitter and not the query layer: an environment is a property of the
+*build that produced the row*, and the only place that is reliably known is the
+running deployment. Telling test from prod by substring-matching a free-text
+`version` field, or by which dataset a row landed in, breaks the moment a repo
+stamps its version differently or shares a dataset.
+
+`env` is deliberately **separate from `target`.** `BUILD_INFO.target`
+(`TEST`/`PRODUCTION`) belongs to the *deploy contract* — it is what a deploy
+verification compares to prove the right code landed in the right place. `env` is
+the *query* discriminator. They are stamped from the same build but answer
+different questions, and collapsing them means a deploy-contract rename silently
+breaks every saved query.
+
+A repo whose emitter predates this standard can declare a compatibility mapping
+under `"axiomEnv"` in `local.settings.json` (see `query_axiom.py`'s
+`DEFAULT_ENV_CONFIG`). That shim exists to make the tool adoptable **before** the
+emitter is fixed — it is not an alternative to fixing it.
+
+### 4. An ingest failure is never silent
+
+`AxiomLogger.write()` returns `{ok, status, body}` and never throws. `flush()`
+turns a failure into three visible consequences:
+
+- it **returns false**, so a caller (a test-support route, a health check) can act;
+- the batch **stays buffered** for the next flush, capped at
+  `MAX_BUFFERED_ENTRIES`, rather than being dropped;
+- the `AXIOM_INGEST_DEGRADED` script property records status, body and sample
+  tags, readable via `GasLogger.getAxiomHealth()`.
+
+The property — not `Logger.log()` — is the signal. Script properties have no
+field cap, so this channel still works when ingest is wedged *because of* the
+field cap. Never report a sink failure by calling `GasLogger.log()`: that event
+flows back through the same broken path.
+
+**Expose `getAxiomHealth()` through a deployment-gated WebApp route.** "Is the log
+pipe broken?" should be one call, not an unexplained 60-second test timeout.
+
+---
+
+## Cooked Reporting (`tools/axiom_report.py`)
+
+`query_axiom.py` answers *what events happened*. A **cooked report** answers *what
+people and the system actually did*: it classifies raw events into named
+activities, joins events belonging to one execution, collapses a burst by one
+actor into a single session line, and puts the handful of things a human must look
+at ahead of everything else.
+
+`axiom_report.py` is the reusable half and is copied verbatim. A repo writes one
+small module, conventionally `tools/activity_log.py`, supplying a `ReportSpec`:
+
+```python
+SPEC = ReportSpec(
+    classify=classify,                 # event -> Activity | None. ALL project knowledge.
+    indexes={"by_op": _op_index},      # cross-event joins, built over the raw result set
+    alert_labels={"SERVER ERROR"},     # surfaced first, ahead of --limit truncation
+)
+```
+
+It inherits `--limit/--since/--env` from the shared parser, so every repo's report
+has the same surface. Start from `tools/activity_log.example.py`; the production
+original is F3Go30's `tools/activity_log.py`.
+
+The one invariant: a cooked report can only say what the emitter stamps. When a
+line you want is not expressible, **add a field to the emitter** — do not infer it
+in the report layer. Where an inference is genuinely unavoidable, mark it (the
+original prefixes an inferred actor with `~`) so a reader can see it is a guess.
+
+---
+
 ## Naming Conventions
 
 Adopted from GActionSheet's ADR-0019 and ADR-0020 (written after auditing ~190 real call sites and finding three incompatible tag-casing conventions and two data-key inconsistencies — both invisible to Axiom but expensive on the dashboard side, since they silently split what should be one facet bucket). Follow these from the first call site so you don't need a later cleanup pass.
@@ -112,7 +238,7 @@ doGet / doPost called
   ├─ GasLogger.log(tag, data)
   └─ GasLogger.flush()
         │
-        ├─ if AXIOM_TOKEN + AXIOM_DATASET set ──► Axiom dataset           query-axiom.py /
+        ├─ if AXIOM_TOKEN + AXIOM_DATASET set ──► Axiom dataset           tools/query_axiom.py /
         │   (POST /ingest; failure logged          ▲                     gas-log-helpers.js
         │    via Logger.log only — NOT written      │ POST /v1/datasets/_apl
         │    to Drive, never retried)                └────────────────────┘
@@ -281,21 +407,24 @@ Copy `GasLogger.js` into `src/` and run `testGasLogger()` once from the GAS edit
    | `AXIOM_DATASET` | the dataset name |
 
    You can set these by hand in the Apps Script editor, or write a deployment-only WebApp route to set them remotely (see GActionSheet's `_handleSetAxiomConfig` in `src/WebApp.js` for a reference pattern — gated behind a deployment secret, same shape as a `set_test_token` route).
-5. In `local.settings.json`, set `axiomDataset` and `axiomQueryToken` (for `query-axiom.py`).
+5. In `local.settings.json`, set `axiomDataset` (this repo's OWN dataset — see **Dataset Convention**) and `axiomQueryToken` (a **separate, read-only** token from the ingest one; see **Two Tokens**).
 6. Run `testGasLogger()` again — check the Axiom dataset's **Stream** tab for the two test entries.
 
 ---
 
 ## Querying Logs Back
 
-### Axiom (`query-axiom.py`)
+### Axiom (`tools/query_axiom.py`)
 
 ```bash
-python query-axiom.py                          # last 200 events, last 24h
-python query-axiom.py --limit 50 --since 2h
-python query-axiom.py --name sync.error
-python query-axiom.py --where "data.docId == '1AAE...'"
-python query-axiom.py --raw /tmp/axiom_dump.json
+python tools/query_axiom.py                          # last 200 events, last 24h
+python tools/query_axiom.py --limit 50 --since 2h
+python tools/query_axiom.py --env prod --since 7d    # one deployment environment
+python tools/query_axiom.py --env sit --name sync.error
+python tools/query_axiom.py --side python
+python tools/query_axiom.py --where "data.docId == '1AAE...'"
+python tools/query_axiom.py --json | jq .            # one flat JSON object per event
+python tools/query_axiom.py --raw /tmp/axiom_dump.json
 ```
 
 Requires `local.settings.json` with `axiomDataset` + `axiomQueryToken`. No external Python packages — stdlib only.
@@ -348,7 +477,10 @@ Requires Node 18+ (uses the built-in global `fetch` for the Axiom backend).
 | `test_gas_logger.js` | Plain-Node unit test (`node test_gas_logger.js`) for both files' pure functions — no GAS runtime needed |
 | `gas-log-helpers.js` | `waitForGasLog`, `clearGasLogs`, `countGasLogEntries`, `axiomProbeLatency`, `assertGasLog`, `assertNoGasLog` — Node/Playwright test helpers; auto-selects the file driver or `axiom-log-helpers.js`'s Axiom driver |
 | `axiom-log-helpers.js` | Axiom query driver for `gas-log-helpers.js` (querying, row-reshaping, sentinel probing) — required by `gas-log-helpers.js`, not used standalone |
-| `query-axiom.py` | CLI to query an Axiom dataset (stdlib only, no dependencies) |
+| `tools/query_axiom.py` | **Copy verbatim.** CLI to query this repo's Axiom dataset, with `--env`. Also the importable query layer the report tools build on (stdlib only, no dependencies) |
+| `tools/axiom_report.py` | **Copy verbatim.** Reusable base for a cooked activity report — classification, cross-event joins, session collapsing, alert section |
+| `tools/activity_log.example.py` | **Copy and rewrite.** Worked example of a repo's own `tools/activity_log.py`; all project knowledge lives here |
+| `tools/test_axiom_tools.py` | Tier-1 tests for the two shared tools (`python3 tools/test_axiom_tools.py`) — no network, no Axiom |
 | `local.settings.example.json` | Template for local developer settings (Drive path + Axiom tokens + `webappTestUrl`/`webappSecret` for the sentinel probe) |
 
 ---
@@ -357,7 +489,8 @@ Requires Node 18+ (uses the built-in global `fetch` for the Axiom backend).
 
 | Concern | Detail |
 |---|---|
-| No fallback on Axiom failure | Once `AXIOM_TOKEN`/`AXIOM_DATASET` are set, a failed POST drops that batch — it is not written to Drive. Calibrate with `axiom_probe` after setup; don't assume Drive will quietly catch a broken pipe |
+| No fallback on Axiom failure | Once `AXIOM_TOKEN`/`AXIOM_DATASET` are set, a failed POST is **not** written to Drive. The batch stays buffered for the next flush (capped at `MAX_BUFFERED_ENTRIES`), `flush()` returns false, and `AXIOM_INGEST_DEGRADED` records why — but if the pipe stays wedged past the cap, the oldest entries are dropped. Calibrate with `axiom_probe` after setup; don't assume Drive will quietly catch a broken pipe |
+| Axiom's 257-field cap | Shared datasets exhaust it and then drop new fields silently, at 2xx. One dataset per repo, and nest the payload — see **The Four Standing Rules** §1 |
 | Latency (Drive) | Drive sync introduces 1–5 second lag; use `waitForGasLog` with adequate timeout |
 | Latency (Axiom) | Network round-trip on every `flush()`; ingest-to-queryable lag varies — measure it for your dataset with an `axiom_probe`-style round-trip check rather than assuming a fixed number |
 | Axiom free tier | Check current ingest volume / retention limits before relying on it for production traffic — treat it as a dev/test/debugging aid unless upgraded |
