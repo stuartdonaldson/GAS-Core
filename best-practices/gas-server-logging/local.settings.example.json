@@ -48,6 +48,12 @@
     "Needing a non-default `field` means you have an emitter to bring to the",
     "standard; it is not an alternative to doing so.",
     "",
+    "--- axiomHoistedKeys (OPTIONAL) -----------------------------------------",
+    "Array of top-level Axiom columns AxiomLogger.js hoists out of the nested",
+    "payload. MUST mirror AXIOM_HOISTED_KEYS in this repo's AxiomLogger.js.",
+    "axiom-log-helpers.js merges them (and always `env`) back into entry.data so",
+    "matchFn predicates see e.data.<key>. Omit if AXIOM_HOISTED_KEYS is empty.",
+    "",
     "--- webappTestUrl / webappSecret ------------------------------------------",
     "Required only for gas-log-helpers.js's axiomProbeLatency/assertNoLog",
     "sentinel-watermark helpers (see README.md 'Sentinel-Watermark Waits'). They",
@@ -60,6 +66,7 @@
   "axiomDataset": "your-repo-name-lowercased",
   "axiomToken": "YOUR_AXIOM_INGEST_TOKEN",
   "axiomQueryToken": "YOUR_AXIOM_READ_ONLY_QUERY_TOKEN",
+  "axiomHoistedKeys": [],
   "webappTestUrl": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
   "webappSecret": "YOUR_DEPLOYMENT_TEST_SECRET"
 }

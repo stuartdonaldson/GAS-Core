@@ -476,7 +476,8 @@ Requires Node 18+ (uses the built-in global `fetch` for the Axiom backend).
 | `AxiomLogger.js` | Optional Axiom sink driver (config lookup, row-shaping, ingest POST). Copy in only if you want Axiom; drop it to remove Axiom as an option, zero changes to `GasLogger.js` |
 | `test_gas_logger.js` | Plain-Node unit test (`node test_gas_logger.js`) for both files' pure functions — no GAS runtime needed |
 | `gas-log-helpers.js` | `waitForGasLog`, `clearGasLogs`, `countGasLogEntries`, `axiomProbeLatency`, `assertGasLog`, `assertNoGasLog` — Node/Playwright test helpers; auto-selects the file driver or `axiom-log-helpers.js`'s Axiom driver |
-| `axiom-log-helpers.js` | Axiom query driver for `gas-log-helpers.js` (querying, row-reshaping, sentinel probing) — required by `gas-log-helpers.js`, not used standalone |
+| `axiom-log-helpers.js` | Axiom query driver for `gas-log-helpers.js` (querying, row-reshaping, sentinel probing) — required by `gas-log-helpers.js`, not used standalone. Reads optional `axiomHoistedKeys` from `local.settings.json` (array; **must mirror `AXIOM_HOISTED_KEYS` in `AxiomLogger.js`**; `env` always included) to merge hoisted columns back into `entry.data` |
+| `test_axiom_log_helpers.js` | Plain-Node unit test (`node test_axiom_log_helpers.js`) for `axiom-log-helpers.js`'s row reshaping (`reshapeAxiomMatch`, `queryAll` with stubbed fetch) — no network |
 | `tools/query_axiom.py` | **Copy verbatim.** CLI to query this repo's Axiom dataset, with `--env`. Also the importable query layer the report tools build on (stdlib only, no dependencies) |
 | `tools/axiom_report.py` | **Copy verbatim.** Reusable base for a cooked activity report — classification, cross-event joins, session collapsing, alert section |
 | `tools/activity_log.example.py` | **Copy and rewrite.** Worked example of a repo's own `tools/activity_log.py`; all project knowledge lives here |
