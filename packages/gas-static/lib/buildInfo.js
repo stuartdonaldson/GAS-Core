@@ -38,6 +38,39 @@ function literalBody_(content, literalName) {
 }
 
 /**
+ * Returns the literal body with everything inside nested `{}` / `[]` removed, so only depth-1
+ * (top-level) text remains. Quoted strings are respected (a bracket inside a string neither opens
+ * nor closes a level), the same way literalBody_ treats them.
+ */
+function topLevelOnly_(body) {
+  let out = '';
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quote) {
+      if (depth === 0) out += ch;
+      if (ch === '\\') {
+        i++;
+        if (depth === 0 && i < body.length) out += body[i];
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      if (depth === 0) out += ch;
+      continue;
+    }
+    if (ch === '{' || ch === '[') { depth++; continue; }
+    if (ch === '}' || ch === ']') { if (depth > 0) depth--; continue; }
+    if (depth === 0) out += ch;
+  }
+  return out;
+}
+
+/**
  * Reads BUILD_INFO fields out of a GAS-side version file (e.g. src/Version.js), the same file
  * gas-deploy's `buildInfoStamper` writes to as the last step of `clasp deploy`. Regex, not
  * require() — the target is a GAS script file (bare consts, no module.exports), not a requirable
@@ -45,7 +78,8 @@ function literalBody_(content, literalName) {
  * literals (pre-package copies) are valid JS and both occur in checkouts, so key quotes are
  * optional here.
  *
- * Returns **every** string field the literal declares, not a fixed three: PracticeMix needed
+ * Returns **every top-level** string field the literal declares (fields nested inside `{}` / `[]`,
+ * such as `subApps[].version`, are ignored so they cannot override the top-level ones), not a fixed three: PracticeMix needed
  * `buildDate` for its cache generation and, finding it absent, wrote a duplicate regex of its own
  * — the package's field-reader re-diverging at its first consumer (PLAN2 F13). `version`,
  * `webappUrl` and `env` are always present (empty string when the literal omits them) so existing
@@ -72,7 +106,8 @@ function readBuildInfo_(filePath, options = {}) {
   const fields = { version: '', webappUrl: '', env: '' };
   const fieldRe = /(?:"([^"]+)"|'([^']+)'|([A-Za-z_$][\w$]*))\s*:\s*"([^"]*)"/g;
   let f;
-  while ((f = fieldRe.exec(body)) !== null) {
+  const top = topLevelOnly_(body);
+  while ((f = fieldRe.exec(top)) !== null) {
     fields[f[1] || f[2] || f[3]] = f[4];
   }
   return fields;
