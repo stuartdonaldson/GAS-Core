@@ -106,3 +106,36 @@ test('the literal name is configurable', () => {
   );
   assert.equal(info.version, '3.0.0');
 });
+
+test('GAS-Core-wfe: nested subApps fields never override or add to top-level fields', () => {
+  const info = readBuildInfo_(writeVersionFile_(`var BUILD_INFO = {
+  "version": "0.1.4.4",
+  "webappUrl": "https://script.google.com/macros/s/AKfycbx/exec",
+  "env": "test",
+  "subApps": [
+    { "id": "export", "sha": "e98b4e0", "dirty": false, "version": "0.1.0" },
+    {
+      "id": "action",
+      "sha": "bdf3d45",
+      "version": "0.2.0"
+    }
+  ]
+};
+`));
+
+  assert.equal(info.version, '0.1.4.4');
+  assert.equal(info.webappUrl, 'https://script.google.com/macros/s/AKfycbx/exec');
+  assert.equal(info.env, 'test');
+  assert.equal('id' in info, false);
+  assert.equal('sha' in info, false);
+});
+
+test('GAS-Core-wfe: bare keys, one line, and brackets inside strings are handled', () => {
+  const info = readBuildInfo_(writeVersionFile_(
+    `const BUILD_INFO = { version: "1.0.0", note: "a } ] b", subApps: [{ id: "x", version: "9.9.9" }], env: "prod" };\n`
+  ));
+  assert.equal(info.version, '1.0.0');
+  assert.equal(info.note, 'a } ] b');
+  assert.equal(info.env, 'prod');
+  assert.equal('id' in info, false);
+});
