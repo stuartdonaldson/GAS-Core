@@ -1,5 +1,12 @@
 # Changelog — gas-static
 
+## 1.3.2
+
+- **`readBuildInfo_` reads top-level `BUILD_INFO` fields only** (GAS-Core-wfe). A `BUILD_INFO` with a
+  nested array of objects that carry their own `version` (NUUTS-Shell's `subApps[]`) let the last
+  nested value overwrite the top-level one, so `assertPublishedBuild` polled for the wrong version and
+  timed out on every publish.
+
 ## 1.3.1
 
 - Exports `readBuildInfo_` from the package index. 1.3.0 made the reader correct but left it
