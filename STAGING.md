@@ -8,6 +8,8 @@ what each stage delivers, and the handoff notes.
 **How to run it:** read this file completely, then *"execute stage 2"* or *"execute stage
 `convert-rcv`"* — both address the same row. One stage is one session.
 
+Stuart's Note: 2026-08-26 this appears to be done with the exception of full rollout/deployment to the respective apps.  That should be tackled as-available, but is not critical priority at the moment.  There is some technical debt in here as well that should be reviewed.
+
 ## Terminology
 
 | Term | Meaning |

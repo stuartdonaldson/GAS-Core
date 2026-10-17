@@ -348,7 +348,10 @@ the page itself tell the truth about which halves are running.
 
 Every static front end in the estate must satisfy all six. **F3Go30 is the reference
 implementation** (`static-pages/src/index.html`, pinned by
-`test/test_static_page_client_invariants.js`).
+`test/test_static_page_client_invariants.js`). **GActionSheet is the second conforming
+implementation** (`static-portal/src/index.html` + `doc.html`, pinned by
+`tests/playwright/team_portal_version_footer.test.js`) and is the one to copy when your backend has
+more than one route the page calls — see the note under requirement 2.
 
 1. **The page displays its own build version persistently** — a footer, populated *before any
    network call*. F3Go30 calls `applyVersionState_(STATIC_BUILD_VERSION_, null)` at load and
@@ -356,6 +359,15 @@ implementation** (`static-pages/src/index.html`, pinned by
 2. **Every API response carries the server's version**, on a response the page already makes
    (F3Go30 puts it on `cfg.appVersion` in every identify), never a dedicated call. The page
    compares it against its own build.
+
+   *Prefer the chokepoint over the hand-picked response.* F3Go30 names one route because it has
+   effectively one; a page that calls several routes should stamp the version in the server's
+   single JSON-response helper and read it in the client's single POST helper. GActionSheet does
+   exactly that — `_jsonResponse` in `src/WebApp.js` sets `serverVersion` on **every** response,
+   and `postJson` in the portal pages notes it off **every** reply — so no route can be added that
+   forgets to carry it, and no call site can be added that forgets to look. Picking one route by
+   hand is a coverage question you have to re-answer on every new route; the chokepoint answers it
+   once.
 3. **On mismatch the page shows *both* versions and offers a reload.** The version shown first is
    always the **client** build — `v2.4.5 (build) · server v2.4.7` — because, in the reference
    implementation's own words, "the version a PAX reads back off the footer during support must be
@@ -371,6 +383,12 @@ implementation** (`static-pages/src/index.html`, pinned by
 6. **Every request carries the client build version** (`clientVersion: STATIC_BUILD_VERSION_` on
    every POST), so the *backend* can see which build is calling it. This is the half nobody asks
    for: without it, stale clients surface in support calls instead of in logs.
+
+   *Log the mismatch ahead of the auth gates, not behind them.* A static page authenticates with a
+   verified identity token, not the backend's shared secret, so its routes deliberately bypass that
+   secret gate — a mismatch check sitting after the gate never sees the very clients this
+   requirement exists for. GActionSheet's originally did, and logged nothing for the whole portal.
+   Put the check next to the request log that runs before every gate.
 
 Requirements 1 and 5 are the page's own honesty; 2, 3 and 4 are the user-visible backstop for the
 propagation window (see [`../gas-deployment/README.md`](../gas-deployment/README.md) §Propagation

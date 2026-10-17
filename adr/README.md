@@ -55,3 +55,6 @@ Supersedes: [None — new decision] | [ADR-000M](000M-slug.md)
 | [0002](0002-declared-config-two-files.md) | Declared configuration lives in two files, not one | Superseded by [0004](0004-project-truth-is-identifiers-not-declarations.md) |
 | [0003](0003-publish-ownership-manifest.md) | A static-host repo declares who publishes what, and `gas-static` validates against it | Accepted |
 | [0004](0004-project-truth-is-identifiers-not-declarations.md) | The committed config file holds per-env identifiers, not env declarations | Accepted |
+| [0005](0005-one-axiom-dataset-per-repo.md) | Each repo logs to its own Axiom dataset | Accepted |
+| [0006](0006-env-is-the-log-query-environment-discriminator.md) | `env` is the log-query environment discriminator, distinct from the deploy contract's `target` | Accepted |
+| [0007](0007-eslint-no-undef-over-scanned-globals-is-a-merge-gate.md) | A GAS repo lints with `no-undef` over a scanned project-global set, at the merge gate | Accepted |

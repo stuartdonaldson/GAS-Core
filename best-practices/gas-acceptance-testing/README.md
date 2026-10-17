@@ -9,9 +9,15 @@ then verifies **durable state** by downloading the actual Document (`.docx`) and
 (`.xlsx`) and parsing them. UI-only behaviour is driven through Playwright.
 
 It is the **stack adapter** for the universal scenario-testing principles in DevStandard
-`knowledge-base/methodology/testing/atdd-bdd.md` (§ *Universal Scenario-Testing Engineering
-Principles*). That document owns the *principle*; this folder owns the *GAS mechanism*. Read
-it first — everything here is "how each principle is expressed in GAS + Python."
+`$DEVSTANDARD/test-framework/sdlc-testing-principles.md` (`T1`–`T25`; entry point
+`$DEVSTANDARD/test-framework/README.md`). That document owns the *principle*; this folder owns
+the *GAS mechanism*. Read it first — everything here is "how each principle is expressed in
+GAS + Python."
+
+> The former citation `knowledge-base/methodology/testing/atdd-bdd.md` is retired. That
+> single-file doc was superseded by the `test-framework/` package (`ADR-0013`) and now survives
+> only at `knowledge-base/methodology/testing/archive/atdd-bdd.md` for provenance. Cite the
+> numbered principles, never the archive.
 
 **Composes with:**
 - [`gas-playwright-testing/`](../gas-playwright-testing/README.md) — driving the deployed web app / sidebar / cards through the iframe sandwich (the UI entry points).
@@ -28,8 +34,8 @@ internal function returns the right value.
 ## The entry-point coverage invariant in GAS
 
 Every state-modifying entry point must be exercised with the **entry point itself as the
-call-site** — not the mechanism it delegates to (DevStandard principle: *Entry-point
-coverage invariant*). In GAS, the entry-point types and their call-site techniques are:
+call-site** — not the mechanism it delegates to (DevStandard `T17`, the entry-point coverage
+invariant). In GAS, the entry-point types and their call-site techniques are:
 
 | Entry-point type | GAS example | How to make it the call-site |
 |---|---|---|
@@ -90,7 +96,8 @@ test must read **after** the signal:
    (`google-sheet-verification`), parse with `python-docx` / `openpyxl`.
 
 **Logs are a completion signal and a path disambiguator — never the assertion.** Assert on
-the downloaded artifact (DevStandard principle: *durable state, not return values or logs*).
+the downloaded artifact (DevStandard `T5` — durable state and user-observable behaviour, not
+return values or log entries).
 A log tag may legitimately distinguish *which branch ran* (e.g. trashed-doc vs not-found) when
 the durable outcome is identical — but the durable outcome is still asserted.
 
@@ -100,10 +107,12 @@ the durable outcome is identical — but the durable outcome is still asserted.
 
 - **Start clean per run.** Create a guaranteed-empty doc with `DocumentApp.create(name)` rather
   than cloning a template that may carry prior state; trash it at teardown. Name it
-  `{Project}-Test-{scenario}-{YYYYMMDD}-{hex}` (DevStandard *named-clone* principle).
+  `{Project}-Test-{scenario}-{YYYYMMDD}-{hex}` (DevStandard `T9` — per-run fixture isolation:
+  fresh fixture per run, destroyed at teardown, no shared static fixture mutated in place).
 - **Scope every read to the run's docId.** A shared ActionSheet / data sheet accumulates rows
   across runs; whole-sheet counts and uniqueness checks read polluted cross-run state. Filter
-  by the run's document id (or a globalId carrying the doc prefix) on every read and invariant.
+  by the run's document id (or a globalId carrying the doc prefix) on every read and invariant
+  (DevStandard `T19` — reads scoped to the run's own identity space).
 
 ---
 

@@ -11,29 +11,57 @@
  */
 const assert = require('node:assert/strict');
 
-const { maskPiiForLog_, maskRecipientListForLog_ } = require('./GasLogger.js');
+const { maskPiiForLog_, maskRecipientListForLog_, classifyErrorKeyword_ } = require('./GasLogger.js');
 const { buildAxiomRows_ } = require('./AxiomLogger.js');
 
 const entries = [
-  { ts: '2026-07-16T09:03:18.000Z', tag: 'sync.complete', version: '1.2.0', data: { docId: 'abc123', changesCount: 3 } },
-  { ts: '2026-07-16T09:05:18.000Z', tag: 'sync.scanned', version: '1.2.0', op: 'op-1', parentOp: 'op-0', data: { warning: 'retry' } },
+  { ts: '2026-07-16T09:03:18.000Z', tag: 'sync.complete', version: '1.2.0', env: 'prod', data: { docId: 'abc123', changesCount: 3 } },
+  { ts: '2026-07-16T09:05:18.000Z', tag: 'sync.scanned', version: '1.2.0', env: 'prod', op: 'op-1', parentOp: 'op-0', data: { warning: 'retry' } },
 ];
 
-const rows = buildAxiomRows_(entries);
+const opts = { app: 'demo', hoistedKeys: ['docId'] };
+const rows = buildAxiomRows_(entries, opts);
 
 assert.equal(rows.length, 2);
 assert.equal(rows[0]._time, '2026-07-16T09:03:18.000Z');
 assert.equal(rows[0].name, 'sync.complete');
 assert.equal(rows[0].side, 'gas');
+assert.equal(rows[0].app, 'demo');
 assert.equal(rows[0].version, '1.2.0');
-assert.equal(rows[0].docId, 'abc123');
-assert.equal(rows[0].changesCount, 3);
+assert.equal(rows[0].env, 'prod');
 assert.equal('op' in rows[0], false);
 assert.equal('parentOp' in rows[0], false);
 
+// THE 257-FIELD RULE (AxiomLogger.js rule 1): a listed key becomes a real
+// top-level column and is REMOVED from the nested copy (one source of truth per
+// event); every other payload key stays inside the single `data` map field and
+// must NOT appear at the top level, or each distinct key mints a permanent
+// column and the dataset eventually starts silently dropping new fields.
+assert.equal(rows[0].docId, 'abc123');
+assert.equal('docId' in rows[0].data, false);
+assert.equal(rows[0].data.changesCount, 3);
+assert.equal('changesCount' in rows[0], false);
+
 assert.equal(rows[1].op, 'op-1');
 assert.equal(rows[1].parentOp, 'op-0');
-assert.equal(rows[1].warning, 'retry');
+assert.equal(rows[1].data.warning, 'retry');
+assert.equal('warning' in rows[1], false);
+
+// An entry with no hoistable key still nests its whole payload.
+const plain = buildAxiomRows_([{ ts: 't', tag: 'x', data: { a: 1, b: 2 } }], opts)[0];
+assert.deepEqual(plain.data, { a: 1, b: 2 });
+assert.equal(plain.env, 'unknown');
+
+// classifyErrorKeyword_ -- returns ONLY a literal from the fixed vocabulary,
+// never any part of the exception's own message (that is the whole point: some
+// GAS exceptions embed fetched document content in their message text).
+assert.equal(classifyErrorKeyword_(new Error('File not found: SECRET-DOC-TITLE')), 'not_found');
+assert.equal(classifyErrorKeyword_(new Error('You do not have permission')), 'permission_denied');
+assert.equal(classifyErrorKeyword_(new Error('Service invoked too many times for one day')), 'quota_exceeded');
+assert.equal(classifyErrorKeyword_(new Error('Exceeded maximum execution time')), 'timeout');
+assert.equal(classifyErrorKeyword_(new Error('something entirely novel')), 'other');
+assert.equal(classifyErrorKeyword_(null), 'other');
+assert.equal(classifyErrorKeyword_('a bare thrown string'), 'other');
 
 // maskPiiForLog_ -- names: first/last character kept, middle collapsed to '...'.
 assert.equal(maskPiiForLog_('Little John'), 'L...n');

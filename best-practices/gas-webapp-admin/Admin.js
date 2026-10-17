@@ -1,11 +1,21 @@
 /**
- * Admin.js — admin-only routes, gated by a set-once shared secret.
+ * Admin.js — the minimum core admin/diagnostic surface a GAS web app ships
+ * with, gated by a set-once shared secret.
  *
- * Mirrors F3Go30's src/WebApp.js admin pattern: the secret is never typed into
- * the Apps Script editor by hand. A one-time bootstrapSecret call sets
- * ADMIN_SHARED_SECRET (refuses to run again once set); every other admin
- * action must echo that secret back in the POST body (never the query
- * string, so it never lands in access logs / curl history). Call via
+ * ONE UNGATED DOOR: bootstrapSecret is the ONLY route reachable with no
+ * secret. It is set-once (refuses once ADMIN_SHARED_SECRET already exists)
+ * and it sets ADMIN_SHARED_SECRET ONLY — never any other Script Property.
+ * Every other secret (e.g. a WEBAPP_SECRET-style production gate) is set
+ * afterward through the admin-gated setScriptProperties. Do not widen the
+ * ungated surface with a per-property bootstrap route — that has been
+ * considered and rejected; see gas-webapp-admin/README.md.
+ *
+ * The secret is never typed into the Apps Script editor by hand, and no
+ * route in this file ever logs or returns a Script Property VALUE — only
+ * key names (setScriptProperties/getScriptProperties) or OAuth scope
+ * strings (getAuthInfo, never the raw token). Every action after
+ * bootstrapSecret must echo the secret back in the POST body (never the
+ * query string, so it never lands in access logs / curl history). Call via
  * `node tools/call-webapp.js <action>` — that tool reads adminSecret and the
  * webapp URLs from local.settings.json (gitignored) and handles the payload
  * shape (defaults `--cmd admin`), so admin calls never need to be hand-built —
@@ -40,6 +50,15 @@ function _handleAdminPost(e) {
     PropertiesService.getScriptProperties().setProperties(payload.properties || {});
     GasLogger.log('admin.setScriptProperties', { keys: keys });
     return _jsonOutput({ ok: true, keysSet: keys });
+  }
+
+  // Key names only — never values. This is what makes config drift
+  // diagnosable (e.g. "is WEBAPP_SECRET actually set on this deployment?")
+  // without ever exposing a secret over the wire.
+  if (payload.action === 'getScriptProperties') {
+    var allKeys = PropertiesService.getScriptProperties().getKeys();
+    GasLogger.log('admin.getScriptProperties', { count: allKeys.length });
+    return _jsonOutput({ ok: true, keys: allKeys });
   }
 
   // Diagnostic: reports who the runtime executes as and which OAuth scopes

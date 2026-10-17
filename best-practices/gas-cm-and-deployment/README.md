@@ -157,6 +157,30 @@ distinction immediately visible without consulting git.
 
 ---
 
+## Developer Environment (`.envrc`)
+
+Copy [`envrc.example`](./envrc.example) to the repo root as `.envrc` and run
+`direnv allow`. Every GAS repo gets the same four required blocks:
+
+| Block | Required? | What breaks without it |
+|---|---|---|
+| Python venv (`source .../uv1/bin/activate`) | if the repo has any Python | Tests run against the system interpreter |
+| `PYTEST_BIN` / `CLAUDE_BIN` | yes | Tooling guesses the interpreter |
+| `clasp_config_auth` | yes, for any repo that deploys | **clasp silently falls back to `~/.clasprc.json`** and can push to a different Apps Script project — the push still succeeds |
+| `DEVSTANDARD` | yes | Gate skills check the literal env var, not a CLAUDE.md table, and fail to resolve role docs |
+
+`PLAYWRIGHT_AUTH_DIR` is optional and only added once a UI suite exists.
+
+**It ships as `envrc.example`, not as a live `.envrc`,** because `.envrc` is
+excluded by the global gitignore — a live one could not be committed here.
+
+**What does not go in `.envrc`:** secrets, tokens, and per-repo identifiers.
+Those belong in `local.settings.json` (gitignored, and readable by both the Node
+and Python tooling). `.envrc` is for machine-local *paths* and *tool selectors*
+that a third-party tool reads out of the process environment.
+
+---
+
 ## Release Workflow
 
 ### Standard release (bug fix)
@@ -282,6 +306,7 @@ Then either:
 |---|---|
 | `commit-deploy-stamp.js` | Reads `.deploy-metadata.json` (the `gas-deploy` package's own shape) and commits the stamped version file with deployment ID, revision, and timestamp in the message |
 | `package.json.example` | Example scripts block: pnpm version governance + the `gas-deploy`-backed deploy scripts |
+| `envrc.example` | Standard direnv environment for a GAS repo (venv, `PYTEST_BIN`/`CLAUDE_BIN`, `clasp_config_auth`, `DEVSTANDARD`). Copy to the repo root as `.envrc` — see **Developer Environment (`.envrc`)** above |
 
 Deploy mechanics — `manage-deployments.js`, the stamper, the resolver, deploy verification — live
 in [`gas-deployment/`](../gas-deployment/README.md); nothing in this folder duplicates them.

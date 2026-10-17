@@ -14,7 +14,8 @@
  *
  * Configuration (local.settings.json): axiomDataset, axiomQueryToken (a
  * READ-ONLY query token — never the ingest AXIOM_TOKEN GasLogger.js/
- * AxiomLogger.js use server-side). Sentinel-watermark probing additionally
+ * AxiomLogger.js use server-side), axiomHoistedKeys (optional array; must mirror
+ * AXIOM_HOISTED_KEYS in AxiomLogger.js — 'env' is always included). Sentinel-watermark probing additionally
  * needs webappTestUrl + webappSecret — see README.md "Sentinel-Watermark
  * Waits" for why a bare timeout is unsound for asserting absence against
  * Axiom's variable ingest latency, and what the WebApp probe route must do.
@@ -23,12 +24,56 @@
  */
 
 /**
+ * Reshape one Axiom `?format=legacy` match into the driver-interface entry
+ * { ts, tag, version, op, parentOp, data } (same shape the file driver returns).
+ *
+ * Row shape (what AxiomLogger.js buildAxiomRows_ ingests):
+ *   match = { _time, data: row }
+ *   row   = { name, side, app, version, env, op?, parentOp?,
+ *             <hoisted keys, e.g. visitor>, data: { <payload> } }
+ * The caller's payload is NESTED under row.data on purpose: an Axiom dataset
+ * caps at 257 fields and silently drops new field names past it, so payload keys
+ * are never spread into top-level columns (README Standing Rule 1). Only the
+ * small AXIOM_HOISTED_KEYS list is promoted to top-level columns for querying.
+ *
+ * Reshape: name -> tag; version/op/parentOp lifted out; payload = row.data;
+ * `env` plus each hoisted key (when not null/undefined) merged back INTO the
+ * payload so matchFn predicates see e.data.visitor / e.data.env as with the file
+ * driver. Everything else (side, app, null-padded noise columns Axiom adds for
+ * rows that lack a field) is DROPPED so it can never shadow a payload key.
+ *
+ * Reference port: GActionSheet tests/helpers/gas_log.py (and NUUTS-Shell
+ * nshell_test/axiom_log.py).
+ *
+ * @param {{_time: string, data: Object}} match - One legacy-format match.
+ * @param {string[]} [hoistedKeys] - settings.axiomHoistedKeys; 'env' is always included.
+ * @returns {{ts: string, tag: string, version: *, op: *, parentOp: *, data: Object}}
+ */
+function reshapeAxiomMatch(match, hoistedKeys) {
+  const row = match.data || {};
+  const keys = ['env'].concat(Array.isArray(hoistedKeys) ? hoistedKeys : []);
+  const payload = row.data && typeof row.data === 'object' ? { ...row.data } : {};
+  keys.forEach((k) => {
+    if (row[k] !== null && row[k] !== undefined) payload[k] = row[k];
+  });
+  return {
+    ts: match._time,
+    tag: row.name,
+    version: row.version === null ? undefined : row.version,
+    op: row.op === null ? undefined : row.op,
+    parentOp: row.parentOp === null ? undefined : row.parentOp,
+    data: payload,
+  };
+}
+
+/**
  * @param {Object} settings - Parsed local.settings.json (or equivalent).
  * @returns {Object} Driver: { name, isConfigured, clear, waitFor, queryAll, assertAbsence }
  */
 function createAxiomDriver(settings) {
   const dataset = settings.axiomDataset;
   const token = settings.axiomQueryToken;
+  const hoistedKeys = Array.isArray(settings.axiomHoistedKeys) ? settings.axiomHoistedKeys : [];
 
   /**
    * Query Axiom for GAS-side entries since `afterMs` (epoch ms). Reshapes rows
@@ -49,19 +94,7 @@ function createAxiomDriver(settings) {
       throw new Error(`Axiom query failed (${resp.status}): ${(await resp.text()).slice(0, 500)}`);
     }
     const result = await resp.json();
-    return (result.matches || []).map((m) => {
-      const data = { ...(m.data || {}) };
-      const tag = data.name;
-      delete data.name;
-      const version = data.version;
-      delete data.version;
-      const op = data.op;
-      delete data.op;
-      const parentOp = data.parentOp;
-      delete data.parentOp;
-      delete data.side;
-      return { ts: m._time, tag, version, op, parentOp, data };
-    });
+    return (result.matches || []).map((m) => reshapeAxiomMatch(m, hoistedKeys));
   }
 
   async function waitFor(matchFn, timeoutMs, afterMs) {
@@ -142,4 +175,4 @@ function createAxiomDriver(settings) {
   };
 }
 
-module.exports = { createAxiomDriver };
+module.exports = { createAxiomDriver, reshapeAxiomMatch };

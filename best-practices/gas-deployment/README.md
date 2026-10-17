@@ -206,6 +206,16 @@ without it. `prePush` hooks (rarer) run before `clasp push`, for generated sourc
 *in* the push; they default to `required: true` because nothing is live yet, so stopping there is
 free.
 
+> **Standing up a brand-new script project?** Any hook here that needs a secret-gated route
+> (`WEBAPP_SECRET`, an admin token, …) will come back `{"ok":false,"error":"unauthorized"}` on a
+> fresh deployment — there is no Script Property to check against yet, and there is no scriptable
+> way out except hand-editing Script Properties in the editor, which defeats the point of a
+> deploy pipeline. See [`../gas-webapp-admin/README.md`](../gas-webapp-admin/README.md)
+> §Deploy-time self-bootstrap: add one `postDeploy` hook that bootstraps the admin secret
+> (set-once, ungated) and then registers `WEBAPP_SECRET` through it, wired **first** — before any
+> other hook in this list that needs a secret. That ordering constraint is the non-obvious part;
+> everything else in that pattern is the same shared-secret shape described here.
+
 ### 8. Two complete, worked configs
 
 **Model A** (single script project, anchor-discovered deployments) — this is

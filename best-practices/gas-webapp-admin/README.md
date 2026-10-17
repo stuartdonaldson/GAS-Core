@@ -23,8 +23,61 @@ from deploy tooling rather than clicked through the editor UI.
 `handleAdminPost_`, `tools/callWebapp.js`); adopted and refined by
 [NUUC-Dispatch](../../../../proj/NUUC-Dispatch) (`src/Admin.js`, `tools/call-webapp.js`)
 — second use is what elevated it here. GActionSheet uses a sibling variant
-(`WEBAPP_SECRET` payload gate in `src/WebApp.js`). `Admin.js` in this folder is a copy of
-NUUC-Dispatch's GAS-side implementation (the most current).
+(`WEBAPP_SECRET` payload gate in `src/WebApp.js`). `Admin.js` in this folder is the merged
+best version across all three: NUUC-Dispatch's shape plus GActionSheet's route-table
+`'adminSecret'` gate-class convention and its `getScriptProperties` diagnostic, ported
+into [NUUTS-Shell](../../../../proj/NUUTS-Shell) (`src/Admin.js`) — the current worked
+example of standing this pattern up on a brand-new script project from zero, including the
+deploy-time self-bootstrap hook (§Deploy-time self-bootstrap below).
+
+## Minimum core admin/diagnostic surface
+
+Every GAS web app in this pattern starts with these five routes — this is the deliberately
+small "day one" surface a new script project should ship with, not an exhaustive admin API:
+
+| Route | Gate | Why it earns a place here |
+|---|---|---|
+| `version` (`cmd=version`, not `cmd=admin`) | open | Ahead of every gate, including `adminSecret` — the deploy pipeline polls it before any secret exists to prove the /exec URL is serving the build just pushed. See `gas-deployment/README.md` §Deploy verification. |
+| `bootstrapSecret` | **open, set-once** | The one ungated door — see below. Without it, a fresh script project has no scriptable way to ever gate anything. |
+| `setScriptProperties` | `adminSecret` | The only way any OTHER Script Property (starting with the production `WEBAPP_SECRET`-style gate) gets set. Logs key names only, never values. |
+| `getScriptProperties` | `adminSecret` | Returns key NAMES only, never values. This is what makes config drift diagnosable ("is `WEBAPP_SECRET` actually set on this deployment?") without a second unauthenticated read surface. |
+| `getAuthInfo` | `adminSecret` | Runtime diagnostic: effective user + the real granted OAuth scopes (`ScriptApp.getOAuthToken()` → tokeninfo), not the manifest's declared `oauthScopes`. The function that tells you a scope was silently dropped from the consent grant. |
+
+## The one-ungated-door rule
+
+`bootstrapSecret` is the **only** route reachable with no credential, and it sets
+`ADMIN_SHARED_SECRET` **only** — never `WEBAPP_SECRET` or any other property. A
+per-property bootstrap (e.g. a second ungated route to set `WEBAPP_SECRET` directly) was
+considered and rejected: it widens the anonymous attack surface for every property added,
+where one door does not. Once `ADMIN_SHARED_SECRET` exists, every other Script Property —
+`WEBAPP_SECRET` included — is set through the admin-gated `setScriptProperties`. Do not
+"improve" this back to per-property bootstrap routes; if a new project's first instinct is
+to add one, that instinct is what this rule exists to stop.
+
+## Deploy-time self-bootstrap
+
+A brand-new script project has neither secret set, so every deploy hook that needs
+`WEBAPP_SECRET` (registering the webapp URL, a test token, Axiom config, config
+verification, …) returns `{"ok":false,"error":"unauthorized"}` and is stuck — there is no
+human step that unblocks it except hand-editing Script Properties in the editor, which is
+exactly what this pattern exists to avoid.
+
+**The non-obvious part is hook ordering.** Add one `postDeploy` hook that (1) calls
+`bootstrapSecret` with the locally-held `adminSecret` (treating `already_bootstrapped` as
+success — every deploy after the first hits this), then (2) calls `setScriptProperties` to
+set `WEBAPP_SECRET` from the locally-held `webappSecret` — and wire it **first**, before
+any other hook that needs `WEBAPP_SECRET`. NUUTS-Shell's worked example:
+`scripts/deploy-hooks.js`'s `registerAdminBootstrap`, wired in `manage-deployments.js`'s
+`postDeploy` list ahead of `Register WEBAPP_URL` (the first hook that needs the secret).
+Never print a secret VALUE to stdout from this hook — only `ok`/`error` and, at most, which
+key names were set.
+
+## Never log or return secret values
+
+No route in `Admin.js`, and no deploy hook that calls it, ever logs or returns a Script
+Property *value* — only key names (`setScriptProperties`/`getScriptProperties`) or OAuth
+scope strings (`getAuthInfo`, never the raw token). This is enforced by convention, not by
+a framework guarantee — keep new admin routes to that same shape.
 
 > **The CLI caller shown below is no longer a per-project hand-roll.** The five projects that
 > originally each built one from scratch (`tools/callWebapp.js` / `tools/call-webapp.js` /
@@ -65,6 +118,7 @@ src/Admin.js  _handleAdminPost(e)          Script Properties
 ├─ action == bootstrapSecret ────────────►  ADMIN_SHARED_SECRET (set once, refuses re-run)
 ├─ adminSecret !== stored → forbidden
 ├─ action == setScriptProperties ────────►  any key/value pairs
+├─ action == getScriptProperties ────────►  (diagnostic: key NAMES only, never values)
 └─ action == getAuthInfo ────────────────►  (diagnostic: effective user + real token scopes)
 ```
 
@@ -123,8 +177,11 @@ over `gas-deploy/bin/call-webapp.js`, configured with this project's `envMap`/`a
 5. Use it:
    ```bash
    pnpm run admin -- setScriptProperties --body '{"properties":{"SOME_TOKEN":"..."}}'
+   pnpm run admin -- getScriptProperties
    pnpm run admin -- getAuthInfo
    ```
+6. Wire the deploy-time self-bootstrap hook (§Deploy-time self-bootstrap above) so step 4
+   never has to be a manual one-off again after a fresh script project stand-up.
 
 ---
 
