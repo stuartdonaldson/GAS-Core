@@ -37,6 +37,9 @@ function constStamper({ file, versionConst = 'APP_VERSION', dateConst = 'APP_VER
   return stamp;
 }
 
+/** Deploy label -> logging `env` (dev|test|prod). Override or extend per project with `envMap`. */
+const DEFAULT_ENV_MAP = Object.freeze({ TEST: 'test', PRODUCTION: 'prod', DEV: 'dev' });
+
 /**
  * Lineage A shape — a `BUILD_INFO = { version, date, target, ... }` object literal, in either a
  * .js or an .html file (GActionSheet's Version.js, PracticeMix's version.html). The whole object
@@ -51,11 +54,22 @@ function constStamper({ file, versionConst = 'APP_VERSION', dateConst = 'APP_VER
  *     legitimately vary per target — GActionSheet's `env` ('test'/'production'/'dev') is the
  *     source of truth for its Axiom `env` column, and is NOT the same vocabulary as `target`
  *     ('TEST'/'PRODUCTION'), which the deploy-verification contract compares against.
+ *
+ * `target` is the deploy contract (the label, e.g. TEST/PRODUCTION). `env` is the logging/query
+ * discriminator in the gas-server-logging vocabulary dev|test|prod (Standing Rule 3), so the
+ * stamper writes a lowercase `env` derived from the label by default — adopters conform without a
+ * hand-rolled map (GAS-Core-3v2). `envMap` overrides/extends the label -> env mapping; an unmapped
+ * label stamps `label.toLowerCase()`. `fields.env` renames the key; `extraFields` still wins.
  */
-function buildInfoStamper({ file, constName = 'BUILD_INFO', fields = {}, extraFields = {} } = {}) {
+function buildInfoStamper({ file, constName = 'BUILD_INFO', fields = {}, extraFields = {}, envMap = {} } = {}) {
   if (!file) throw new Error('buildInfoStamper requires a { file } path relative to the project root');
   const key = {
-    version: 'version', date: 'date', target: 'target', webAppUrl: 'webAppUrl', ...fields,
+    version: 'version', date: 'date', target: 'target', webAppUrl: 'webAppUrl', env: 'env', ...fields,
+  };
+  const envFor = (label) => {
+    const map = { ...DEFAULT_ENV_MAP, ...envMap };
+    const mapped = map[label] !== undefined ? map[label] : map[String(label).toUpperCase()];
+    return mapped !== undefined ? mapped : String(label).toLowerCase();
   };
   const stamp = (ctx) => {
     const { root, label, version, now, webAppUrl, log = console.log } = ctx;
@@ -66,6 +80,7 @@ function buildInfoStamper({ file, constName = 'BUILD_INFO', fields = {}, extraFi
       [key.version]: version,
       [key.date]: now,
       [key.target]: label,
+      [key.env]: envFor(label),
       ...(webAppUrl ? { [key.webAppUrl]: webAppUrl } : {}),
       ...(typeof extraFields === 'function' ? extraFields(ctx) : extraFields),
     };
@@ -89,4 +104,4 @@ function buildInfoStamper({ file, constName = 'BUILD_INFO', fields = {}, extraFi
   return stamp;
 }
 
-module.exports = { constStamper, buildInfoStamper };
+module.exports = { constStamper, buildInfoStamper, DEFAULT_ENV_MAP };
