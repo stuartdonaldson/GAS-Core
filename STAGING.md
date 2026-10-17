@@ -62,7 +62,7 @@ everything with no error. Use `bdls --stage '<glob>'` for wildcard stage matchin
 | 5 | `libidentity-and-method` | `GAS-Core-dof` | ○ | Validate and land the staged-plan skill (F21) |
 | — | — | `GAS-Core-f3d` | ✗ | ~~Extract `libs/LibIdentity` from PracticeMix's verifier (F12)~~ — closed **not planned** 2026-08-26 |
 | — | — | `GAS-Core-dns` | ○ | GasLogger PII policy vs. identity call sites — owner decision, see *Escalation* |
-| — | `drive-direct-read` | `GAS-Core-emk` | ⏸ | PracticeMix: direct Drive read primary, base64 fallback (F16) |
+| — | `drive-direct-read` | `GAS-Core-emk` | ✗ | ~~PracticeMix: direct Drive read primary, base64 fallback (F16)~~ — closed **not planned** 2026-10-17 |
 | — | `managed-host-checkout` | `GAS-Core-bsi` | ○ | `gas-static`: managed host checkout, so `staticRepoPath` stops being required |
 
 **Status key:** ○ open · ◐ in progress · ✓ closed · ✗ closed not-planned · ● blocked · ⏸ held · ❄ deferred
@@ -222,7 +222,7 @@ Owner decisions are **not** parked in prose. They carry the `human` label and su
 | `GAS-Core-e5z` | Retire the `gas-deploy` `postFn` transport override once PracticeMix is `ANYONE_ANONYMOUS`. Revisit at the next `gas-deploy` breaking change. |
 | `GAS-Core-dns` | GasLogger's policy (`GasLogger.js:73-76`) forbids a raw email in any logged payload and ships `maskPiiForLog_()`; PracticeMix's `Identity.js:186` and `Api.js:80` log `email`/`sub` in the clear anyway, deliberately, to serve the audit goal ADR-0002 suspended. Either carve a stated exception into the policy or mask at both call sites — the policy must not say one thing while the shipped code does another. Settle before any identity code becomes a library everyone imports. |
 
-**Resolved 2026-08-25 — `GAS-Core-emk` (`drive-direct-read`, still ⏸):** the sharing decision is
+**Resolved 2026-08-25 — `GAS-Core-emk` (`drive-direct-read`, closed not planned 2026-10-17):** the sharing decision is
 answered. The user is assumed to have access to the practice-track folders/files via either
 "anyone with the link" sharing or permission on their own Google account — not universal anonymous
 access. On a direct-fetch failure, the implementation must give a meaningful error: first prompt the
