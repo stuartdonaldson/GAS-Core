@@ -19,6 +19,12 @@ function envDefFor_(config, envKey) {
  * BUILD_INFO's env field must match the deploy target this env is declared to publish. This is
  * the guard only one of the three pre-package copies had (GActionSheet) — it is what prevents
  * publishing a page pointed at last deploy's URL. Throws before anything is written.
+ *
+ * The field compared is `spec.envField`, default `'target'` (2.0.0; was `'env'`). `target` is the
+ * deploy-contract field gas-deploy's buildInfoStamper always writes (the target's `label`, e.g.
+ * TEST/PRODUCTION); `env` is the lowercase logging discriminator (dev|test|prod) that
+ * best-practices/gas-server-logging Rule 3 reserves for GasLogger and query_axiom.py. A guard that
+ * read `env` forced every adopter to choose between a correct guard and a correct log column.
  */
 function resolveWebappUrl_(config, envKey) {
   const spec = config.webappUrl;
@@ -28,7 +34,7 @@ function resolveWebappUrl_(config, envKey) {
   const envDef = envDefFor_(config, envKey);
   const filePath = path.join(config.root, spec.file);
   const buildInfo = readBuildInfo_(filePath);
-  const envField = spec.envField || 'env';
+  const envField = spec.envField || 'target';
 
   if (buildInfo[envField] !== envDef.deployTarget) {
     throw new Error(

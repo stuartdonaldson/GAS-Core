@@ -42,7 +42,7 @@ module.exports = runStatic({
   copyAssets: true,                        // default true: everything else under srcDir, verbatim
   // Where the backend URL comes from. Only 'buildInfo' is supported — it cannot name a
   // deployment this deploy did not land in, and asserts env agreement before writing anything.
-  webappUrl: { from: 'buildInfo', file: 'src/Version.js', envField: 'env' },
+  webappUrl: { from: 'buildInfo', file: 'src/Version.js' },  // guard reads BUILD_INFO.target
   placeholders: {                          // extra project-specific stamps, raw-token substitution
     STATIC_THEME_: (ctx) => THEME[ctx.env],
   },
@@ -106,14 +106,14 @@ keeps.
 | `srcDir` / `distDir` | Source and per-env output directories, relative to `root`. |
 | `stampedPages` | HTML files to stamp. Default: every `.html` file at `srcDir`'s own root (not recursive). |
 | `copyAssets` | Copy everything else under `srcDir` (subdirectories included) into each env's `dist/<env>/` verbatim. Default `true`. |
-| `webappUrl` | `{ from: 'buildInfo', file, envField }`. `file` is a **server-side** GAS version file (e.g. `src/BuildInfo.js`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **bare semver**; `envField` (default `'env'`) is the BUILD_INFO key checked against each env's `deployTarget`. `from` accepts `'buildInfo'` only — [ADR-0001](../../adr/0001-webapp-url-from-build-info-only.md). **Footgun:** a project may also have a *client-side* version file (PracticeMix's `src/version.html`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **display string** (`v1.6.7.8 (Rev. …)`). Point `file` at that one and `assertPublishedBuild` compares a display string against a semver and can never pass — and the GAS runtime cannot read an `.html` file at all, so the backend is not using it either. The file this key names must be the one the deploy stamps and the server executes. |
+| `webappUrl` | `{ from: 'buildInfo', file, envField }`. `file` is a **server-side** GAS version file (e.g. `src/BuildInfo.js`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **bare semver**; `envField` (default `'target'`, was `'env'` before 2.0.0) is the BUILD_INFO key checked against each env's `deployTarget`; it is the deploy-contract field gas-deploy's `buildInfoStamper` always writes (the target's `label`, e.g. `TEST`/`PRODUCTION`). `BUILD_INFO.env` is not read by gas-static: it is the lowercase logging discriminator (`dev`/`test`/`prod`) that `GasLogger` and `query_axiom.py` own ([gas-server-logging Rule 3](../../best-practices/gas-server-logging/README.md)). `from` accepts `'buildInfo'` only — [ADR-0001](../../adr/0001-webapp-url-from-build-info-only.md). **Footgun:** a project may also have a *client-side* version file (PracticeMix's `src/version.html`) carrying a `BUILD_INFO`-shaped literal whose `version` is a **display string** (`v1.6.7.8 (Rev. …)`). Point `file` at that one and `assertPublishedBuild` compares a display string against a semver and can never pass — and the GAS runtime cannot read an `.html` file at all, so the backend is not using it either. The file this key names must be the one the deploy stamps and the server executes. |
 | `placeholders` | `{ TOKEN: (ctx) => value }` — extra project-specific tokens, substituted as raw text wherever `TOKEN` appears (not wrapped in a `var … = …;` declaration, unlike the two standard placeholders below). `ctx` is `{ env, envDef, version, webappUrl }`. |
 | `envs` | Per-env config, see below. |
 | `liveUrl` | `(env) => string` — the live base URL serving that env's `dist/` output (trailing slash optional). `assertPublishedBuild` appends `version.json`. |
 | `settingsPath` | Default `<root>/local.settings.json`. |
 | `commitMessage` | `({ env, envDef }) => string`, for the publish commit. Default `Publish static <env> (<label>)`. |
 
-Per env: `deployTarget` (the `webappUrl.envField` value this env expects), `repoKey` (the
+Per env: `deployTarget` (the `BUILD_INFO.target` value this env expects, e.g. `TEST`), `repoKey` (the
 `local.settings.json` key holding the sibling static-host repo's path), `dest` (path within that
 repo this env publishes to), `label`.
 
@@ -165,10 +165,12 @@ Written alongside each stamped page, and the *only* thing `assertPublishedBuild`
 ## Env-agreement assertion
 
 `buildEnv` resolves `webappUrl`/`version` from `BUILD_INFO` and requires
-`BUILD_INFO[envField] === envs[env].deployTarget` *before* writing anything. This is the guard
+`BUILD_INFO[envField] === envs[env].deployTarget` *before* writing anything, where `envField` defaults to `target` — the deploy-contract field, never the logging `env`. This is the guard
 only one of the three pre-package copies had (GActionSheet) — it is what prevents publishing a
 page pointed at last deploy's URL because the version file wasn't re-stamped for the env being
 built.
+
+`version.json`'s own `env` field is a third, unrelated thing: the gas-static env key (`sit`, `prod`), compared by `assertPublishedBuild` against the env being asserted. It is never compared with `BUILD_INFO.env`.
 
 ## Publish
 

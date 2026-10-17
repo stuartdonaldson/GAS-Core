@@ -1,5 +1,31 @@
 # Changelog — gas-static
 
+## 2.0.0
+
+### BREAKING: the env-agreement guard reads `BUILD_INFO.target`, not `BUILD_INFO.env` (GAS-Core-3v2)
+
+`webappUrl.envField` now defaults to `'target'` (was `'env'`). `target` is the deploy-contract field
+gas-deploy's `buildInfoStamper` always writes (the target's `label`: `TEST`, `PRODUCTION`, ...).
+`BUILD_INFO.env` becomes the lowercase logging discriminator (`dev`/`test`/`prod`) that
+gas-server-logging Rule 3 reserves for `GasLogger` and `query_axiom.py`; gas-static no longer reads it.
+`readBuildInfo_` now always returns `target` (empty string when absent), like `version`/`webappUrl`/`env`.
+`assertPublishedBuild` is unchanged: it compares `version.json`'s `env` (the gas-static env key) and
+never consults `BUILD_INFO.env`.
+
+### Migrating from 1.x
+
+1. In the consumer's static config, delete `envField: 'env'` from `webappUrl`
+   (or set `envField: 'env'` to keep the 1.x behaviour, which is only correct while `env` still
+   carries the deploy label).
+2. Every `envs[env].deployTarget` must equal what the deploy stamps into `BUILD_INFO.target`, i.e. the
+   gas-deploy target `label` (`TEST`, `PRODUCTION`, `SIT`, ...), not the lowercase value 1.x compared
+   against `env`.
+3. `BUILD_INFO` must carry a `target`. gas-deploy's `buildInfoStamper` writes it unless the consumer
+   remapped it away (`fields: { target: 'env' }`, or a hand-written stamper that only writes `env`):
+   remove that remap and stamp `env` separately as `dev`/`test`/`prod`.
+4. Once on gas-deploy 2.0.0 (default lowercase `env`), delete any `axiomEnv` shim in
+   `local.settings.json`.
+
 ## 1.3.2
 
 - **`readBuildInfo_` reads top-level `BUILD_INFO` fields only** (GAS-Core-wfe). A `BUILD_INFO` with a

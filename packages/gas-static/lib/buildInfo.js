@@ -82,7 +82,7 @@ function topLevelOnly_(body) {
  * such as `subApps[].version`, are ignored so they cannot override the top-level ones), not a fixed three: PracticeMix needed
  * `buildDate` for its cache generation and, finding it absent, wrote a duplicate regex of its own
  * — the package's field-reader re-diverging at its first consumer (PLAN2 F13). `version`,
- * `webappUrl` and `env` are always present (empty string when the literal omits them) so existing
+ * `webappUrl`, `env` and `target` are always present (empty string when the literal omits them) so existing
  * callers need no guards.
  *
  * @param {string} filePath
@@ -103,7 +103,7 @@ function readBuildInfo_(filePath, options = {}) {
 
   // Only within the literal's own body: a comment or a second literal elsewhere in the file used
   // to win here, silently, because the old regex scanned the whole file for the first match.
-  const fields = { version: '', webappUrl: '', env: '' };
+  const fields = { version: '', webappUrl: '', env: '', target: '' };
   const fieldRe = /(?:"([^"]+)"|'([^']+)'|([A-Za-z_$][\w$]*))\s*:\s*"([^"]*)"/g;
   let f;
   const top = topLevelOnly_(body);

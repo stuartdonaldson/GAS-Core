@@ -85,9 +85,10 @@ test('an empty field reads as empty, not as missing', () => {
   assert.equal(info.webappUrl, '');
 });
 
-test('version/webappUrl/env are always present so callers need no guards', () => {
+test('version/webappUrl/env/target are always present so callers need no guards', () => {
   const info = readBuildInfo_(writeVersionFile_('const BUILD_INFO = { "version": "1.0.0" };\n'));
-  assert.deepEqual(Object.keys(info).sort(), ['env', 'version', 'webappUrl']);
+  assert.deepEqual(Object.keys(info).sort(), ['env', 'target', 'version', 'webappUrl']);
+  assert.equal(info.target, '');
 });
 
 test('no BUILD_INFO literal throws, naming the file and the literal', () => {
