@@ -261,7 +261,7 @@ actually happened. See its README §"Chaining off a deploy".
 | `envAliases` | Public env name → internal target key, e.g. `{ sit: 'test', prod: 'template' }`. |
 | `resolveDeployment` | Resolver chain. Default `standardChain(target.anchor)`. |
 | `prePush` | Ordered hooks that run after the stamp and **before** the push, for source that must be part of it. Default `required: true` — nothing is live yet, so stopping is free. |
-| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. |
+| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. Hooks run only after a readiness poll has confirmed the new version is serving — see §Deploy verification. |
 | `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. **Must contain `target.anchor`** — see §Deployment description & the anchor. |
 | `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. See §Project-specific summary rows. |
 | `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
@@ -333,6 +333,21 @@ was measured at ~1 min for a code change and ~90 s for a manifest change, and mi
 
 The route itself is per-project GAS code (only the project knows where its stamper wrote); the
 package owns the Node side.
+
+### Order: readiness poll, hooks, final assert
+
+`assertDeployedVersion` runs **twice** per deploy, with the `postDeploy` hooks between the two:
+
+1. **Readiness poll** — right after `clasp deploy`, before any hook. Immediately after a deploy the
+   `/exec` URL can answer with Google's HTML page, or the previous version, for minutes; a hook that
+   calls the webapp in that window gets garbage (a `bootstrapSecret` hook once skipped its work on
+   exactly this). No hook runs until the new version and target are confirmed serving.
+   **If this poll times out the deploy fails and no hook runs.**
+2. **`postDeploy` hooks**, in declared order.
+3. **Final assert** — unchanged, mandatory, non-skippable. It repeats the check after the hooks
+   because a hook can change Script Properties.
+
+Both polls use the same `verifyOptions`, so a deploy costs at least one extra settle interval.
 
 ## Invariants
 
