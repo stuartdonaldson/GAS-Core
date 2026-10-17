@@ -122,10 +122,10 @@ function redact(payload, authField = 'adminSecret') {
  * One call against a deployed webapp. Rejects on a non-JSON response so a caller can retry the
  * propagation race; the diagnostic quotes the response, never the request.
  */
-async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, authField, ungatedActions, timeoutMs, postFn = post } = {}) {
+async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, authField, ungatedActions, timeoutMs } = {}) {
   const url = execUrl(deploymentId, cmd);
   const payload = buildPayload({ action, extraBody, secret, authField, ungatedActions });
-  const result = await postFn(url, payload, { timeoutMs });
+  const result = await post(url, payload, { timeoutMs });
 
   if (typeof result === 'string') {
     throw new Error(

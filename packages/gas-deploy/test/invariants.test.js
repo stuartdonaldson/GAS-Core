@@ -41,7 +41,7 @@ test('#1: no clasp invocation anywhere without an env carrying clasp_config_auth
       stamper: constStamper({ file: 'script/version.js' }),
       exec: fakeExec,
       log: () => {}, errorLog: () => {},
-      verifyOptions: { postFn: async () => ({ ok: true, version: '1.0.0.1', target: 'TEST' }), sleep: async () => {} },
+      verifyOptions: { transport: async () => ({ ok: true, version: '1.0.0.1', target: 'TEST' }), sleep: async () => {} },
       targets: { test: { scriptIdKey: 'testScriptId', label: 'TEST', counter: 'build', deploymentIdKey: 'testDeploymentId', sheetIdKey: 'testSheetId' } },
     }, 'test');
 

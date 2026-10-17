@@ -1,9 +1,36 @@
 'use strict';
-const { test } = require('node:test');
+const { test, mock } = require('node:test');
+const { EventEmitter } = require('node:events');
+const https = require('node:https');
 const assert = require('node:assert/strict');
 const { execUrl, buildPayload, redact, call } = require('../lib/webapp.js');
 
 const SECRET = 'super-secret-value-abc123';
+
+/**
+ * call() has no transport override (GAS-Core-e5z), so tests stand in for the network one layer
+ * down: https.request is replaced with a fake that records the request and answers with `reply`.
+ */
+function fakeHttps(reply) {
+  const seen = {};
+  mock.method(https, 'request', (opts, cb) => {
+    seen.opts = opts;
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.destroy = () => {};
+    req.write = (b) => { seen.body = JSON.parse(b); };
+    req.end = () => {
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.resume = () => {};
+      cb(res);
+      res.emit('data', Buffer.from(typeof reply === 'string' ? reply : JSON.stringify(reply)));
+      res.emit('end');
+    };
+    return req;
+  });
+  return seen;
+}
 
 test('execUrl never carries a secret in the query string', () => {
   const url = execUrl('AKfycA', 'admin');
@@ -12,12 +39,21 @@ test('execUrl never carries a secret in the query string', () => {
 });
 
 test('the secret travels in the POST body, never the URL', () => {
-  let seenUrl, seenBody;
-  const postFn = async (url, body) => { seenUrl = url; seenBody = body; return { ok: true }; };
-  return call('AKfycA', { cmd: 'admin', action: 'listSheets', secret: SECRET, postFn }).then(() => {
-    assert.doesNotMatch(seenUrl, new RegExp(SECRET));
-    assert.equal(seenBody.adminSecret, SECRET);
-  });
+  const seen = fakeHttps({ ok: true });
+  return call('AKfycA', { cmd: 'admin', action: 'listSheets', secret: SECRET }).then(() => {
+    assert.doesNotMatch(seen.opts.path, new RegExp(SECRET));
+    assert.equal(seen.body.adminSecret, SECRET);
+  }).finally(() => mock.restoreAll());
+});
+
+test('call() has no transport override: a postFn option is ignored, never invoked', async () => {
+  const seen = fakeHttps({ ok: true });
+  let invoked = false;
+  try {
+    await call('AKfycA', { action: 'listSheets', secret: SECRET, postFn: async () => { invoked = true; return { ok: true }; } });
+    assert.equal(invoked, false);
+    assert.equal(seen.body.action, 'listSheets', 'the request went through the package transport');
+  } finally { mock.restoreAll(); }
 });
 
 test('buildPayload omits the auth field for ungated actions', () => {
@@ -45,16 +81,16 @@ test('redact hides the auth field and anything secret-shaped', () => {
 });
 
 test('a non-JSON response fails loudly and quotes the RESPONSE, never the request', async () => {
-  const postFn = async () => '<html>Go30 has moved</html>';
+  fakeHttps('<html>Go30 has moved</html>');
   await assert.rejects(
-    () => call('AKfycA', { action: 'listSheets', secret: SECRET, postFn }),
+    () => call('AKfycA', { action: 'listSheets', secret: SECRET }),
     (err) => {
       assert.match(err.message, /Non-JSON response/);
       assert.match(err.message, /propagation race/, 'says the retryable cause');
       assert.equal(err.message.includes(SECRET), false, 'the failure path must not leak the secret');
       return true;
     }
-  );
+  ).finally(() => mock.restoreAll());
 });
 
 test('execUrl requires a deployment ID', () => {

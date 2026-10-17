@@ -47,7 +47,7 @@ test('no postDeploy hook runs until the new version is serving; the final assert
     const events = [];
     let polls = 0;
     // The first three reads are the settling window (old version); the fake flips to ready after.
-    const postFn = async () => {
+    const transport = async () => {
       polls++;
       const ready = polls > 3;
       events.push(ready ? 'poll:ready' : 'poll:not-ready');
@@ -55,7 +55,7 @@ test('no postDeploy hook runs until the new version is serving; the final assert
     };
     const result = await deploy({
       ...base,
-      verifyOptions: { postFn, sleep: async () => {}, settleReads: 1 },
+      verifyOptions: { transport, sleep: async () => {}, settleReads: 1 },
       postDeploy: [
         { name: 'h1', run: async () => { events.push('hook:h1'); } },
         { name: 'h2', run: async () => { events.push('hook:h2'); } },
@@ -81,7 +81,7 @@ test('a readiness timeout fails the deploy and NO postDeploy hook runs', async (
       ...base,
       errorLog: (m) => errors.push(m),
       // intervalSec > timeoutSec: the first unmatched read exhausts the budget, no real wait.
-      verifyOptions: { postFn: async () => { polls++; return NOT_READY; }, sleep: async () => {}, intervalSec: 5, timeoutSec: 1, settleReads: 1 },
+      verifyOptions: { transport: async () => { polls++; return NOT_READY; }, sleep: async () => {}, intervalSec: 5, timeoutSec: 1, settleReads: 1 },
       postDeploy: [{ name: 'must-not-run', run: async () => { hooksRun++; } }],
     }, 'test');
 

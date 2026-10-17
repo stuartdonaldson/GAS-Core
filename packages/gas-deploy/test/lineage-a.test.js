@@ -57,7 +57,7 @@ function baseConfig(dir, overrides = {}) {
     log: () => {},
     errorLog: () => {},
     verifyOptions: {
-      postFn: async () => ({ ok: true, version: '0.2.2.5', target: 'TEST' }),
+      transport: async () => ({ ok: true, version: '0.2.2.5', target: 'TEST' }),
       sleep: async () => {},
     },
     targets: {
