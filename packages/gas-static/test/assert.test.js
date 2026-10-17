@@ -162,3 +162,12 @@ test('the default timeout is 300s — the honest number for a CDN rebuild (PLAN2
   );
   assert.equal(attempts, 61, '300s at the 5s default interval — one read at t=0 through t=300');
 }));
+
+// GAS-Core-3v2: version.json's `env` is the gas-static envKey, a third thing distinct from both
+// BUILD_INFO.target (deploy contract) and BUILD_INFO.env (logging). assertPublishedBuild must not
+// consult BUILD_INFO.env at all.
+test('GAS-Core-3v2: BUILD_INFO.env (logging vocabulary) is not compared against version.json env', async () => {
+  const fetchJson = async () => ({ version: '2.5.0.9', env: 'sit', webappUrl: 'https://script.google.com/macros/s/AKfyLIVE/exec' });
+  const result = await assertPublishedBuild(projectConfig_({ env: 'prod', target: 'TEST' }), 'sit', '2.5.0.9', { fetchJson });
+  assert.equal(result.ok, true);
+});

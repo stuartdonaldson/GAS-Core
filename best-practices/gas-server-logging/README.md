@@ -149,6 +149,11 @@ under `"axiomEnv"` in `local.settings.json` (see `query_axiom.py`'s
 `DEFAULT_ENV_CONFIG`). That shim exists to make the tool adoptable **before** the
 emitter is fixed — it is not an alternative to fixing it.
 
+**Resolved (GAS-Core-3v2).** As of gas-static 2.0.0 + gas-deploy 2.0.0 the package conflict is gone:
+gas-static's env-agreement guard reads `BUILD_INFO.target` (not `env`), and gas-deploy's
+`buildInfoStamper` stamps a lowercase `env` (`dev`/`test`/`prod`) by default. A repo that repins both
+can delete its `axiomEnv` shim.
+
 ### 4. An ingest failure is never silent
 
 `AxiomLogger.write()` returns `{ok, status, body}` and never throws. `flush()`

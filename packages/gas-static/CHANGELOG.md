@@ -1,5 +1,48 @@
 # Changelog — gas-static
 
+## 2.0.0
+
+### BREAKING: the env-agreement guard reads `BUILD_INFO.target`, not `BUILD_INFO.env` (GAS-Core-3v2)
+
+`webappUrl.envField` now defaults to `'target'` (was `'env'`). `target` is the deploy-contract field
+gas-deploy's `buildInfoStamper` always writes (the target's `label`: `TEST`, `PRODUCTION`, ...).
+`BUILD_INFO.env` becomes the lowercase logging discriminator (`dev`/`test`/`prod`) that
+gas-server-logging Rule 3 reserves for `GasLogger` and `query_axiom.py`; gas-static no longer reads it.
+`readBuildInfo_` now always returns `target` (empty string when absent), like `version`/`webappUrl`/`env`.
+`assertPublishedBuild` is unchanged: it compares `version.json`'s `env` (the gas-static env key) and
+never consults `BUILD_INFO.env`.
+
+### Managed host checkout (GAS-Core-bsi)
+
+`publishEnv` no longer requires `staticRepoPath`/`nuucStaticRepoPath`. When `settings[envDef.repoKey]`
+is unset and `envDef.repo` (the `owner/name` slug from `gas-project.json` `staticHosts.<host>.repo`) is
+declared, it keeps a sparse, blobless clone under `~/.cache/gas-static/<owner>__<name>`, fast-forwards it
+before each publish, and refuses with a named `ManagedCheckoutError` (`DIRTY`, `DIVERGED`, ...) on an
+unsafe checkout. New optional env keys: `repo`, `cloneUrl`; new publish option: `cacheRoot`. A set
+`settings[repoKey]` keeps working exactly as before, as an override. This part is additive.
+
+### Migrating from 1.x
+
+1. In the consumer's static config, delete `envField: 'env'` from `webappUrl`
+   (or set `envField: 'env'` to keep the 1.x behaviour, which is only correct while `env` still
+   carries the deploy label).
+2. Each env's expected label must equal what the deploy stamps into `BUILD_INFO.target`, i.e. the
+   gas-deploy target `label` (`TEST`, `PRODUCTION`, `SIT`, ...), not the lowercase value 1.x compared
+   against `env`. New optional `envs[env].target` supplies it; `deployTarget` is the fallback, so a
+   consumer that uses `deployTarget` as a lowercase `gas-project.json` lookup key leaves it alone:
+   - GActionSheet, NUUTS-Shell, NUUTS-Track, NUUTS-Track-portal: add `target: 'TEST'` /
+     `target: 'PRODUCTION'` to each env and drop `envField:'env'`.
+   - NDocs: add `target: 'SIT'` (its gas-deploy label) and drop `envField:'env'`; its
+     `STATIC_BUILD_ENV_` placeholder keeps reading `deployTarget`, so the page is unchanged.
+   - PracticeMix, RankChoiceVoting: `deployTarget` already holds the label; nothing to add.
+3. `BUILD_INFO` must carry a `target`. gas-deploy's `buildInfoStamper` writes it unless the consumer
+   remapped it away (`fields: { target: 'env' }`, or a hand-written stamper that only writes `env`):
+   remove that remap and stamp `env` separately as `dev`/`test`/`prod`.
+4. Optional (GAS-Core-bsi): add `repo: host.repo` to each env in the static config and delete
+   `staticRepoPath`/`nuucStaticRepoPath` from `local.settings.json`.
+5. Once on gas-deploy 2.0.0 (default lowercase `env`), delete any `axiomEnv` shim in
+   `local.settings.json`.
+
 ## 1.3.2
 
 - **`readBuildInfo_` reads top-level `BUILD_INFO` fields only** (GAS-Core-wfe). A `BUILD_INFO` with a

@@ -29,7 +29,7 @@ function baseConfig_(root, repoRoot) {
     root,
     distDir: 'static-pages/dist',
     envs: {
-      sit: { deployTarget: 'test', repoKey: 'staticRepoPath', dest: 'pub/app-sit', label: 'SIT' },
+      sit: { deployTarget: 'TEST', repoKey: 'staticRepoPath', dest: 'pub/app-sit', label: 'SIT' },
     },
   };
 }

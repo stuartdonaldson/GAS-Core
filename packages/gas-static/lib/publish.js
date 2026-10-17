@@ -4,6 +4,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { assertRegisteredDest_ } = require('./publishers.js');
+const { ensureManagedCheckout_, defaultCacheRoot_ } = require('./managedCheckout.js');
 
 function loadSettings_(config) {
   const settingsPath = config.settingsPath || path.join(config.root, 'local.settings.json');
@@ -29,8 +30,9 @@ function copyDir_(src, dest) {
  * pre-package copies disagreed on two points; the policy each one resolves to (README
  * §Provenance records which copy each came from):
  *
- *   - missing repo path (envDef.repoKey unset in local.settings.json) = warn and skip, not a
- *     hard failure — a fresh clone without the sibling repo checked out should still deploy;
+ *   - no host checkout (envDef.repoKey unset in local.settings.json AND no envDef.repo slug) = warn
+ *     and skip, not a hard failure. With a slug declared the package manages its own sparse
+ *     checkout instead (lib/managedCheckout.js, GAS-Core-bsi) and repoKey is an optional override;
  *   - prompt before a cross-repo push, unless `chained` (invoked from a deploy pipeline that
  *     already confirmed) or `yes` (non-interactive) — the same human-in-the-loop norm every
  *     other cross-repo push in these projects uses.
@@ -56,19 +58,36 @@ async function publishEnv(config, envKey, options = {}) {
   if (!envDef) throw new Error(`gas-static: unknown env '${envKey}'`);
 
   const settings = loadSettings_(config);
-  const repoPathSetting = settings[envDef.repoKey];
-  if (!repoPathSetting) {
-    warn(`gas-static: ${envDef.repoKey} is not set in local.settings.json — skipping publish for '${envKey}'.`);
+  const overridePath = settings[envDef.repoKey];
+  const managed = !overridePath && !!(envDef.repo || envDef.cloneUrl);
+  if (!overridePath && !managed) {
+    warn(`gas-static: ${envDef.repoKey} is not set in local.settings.json and envs.${envKey}.repo is not declared — skipping publish for '${envKey}'.`);
     return { skipped: true, reason: 'no-repo-path' };
-  }
-  const repoRoot = path.resolve(config.root, repoPathSetting);
-  if (!fs.existsSync(path.join(repoRoot, '.git'))) {
-    throw new Error(`gas-static: ${repoRoot} does not look like a git checkout (no .git found)`);
   }
 
   const srcDir = path.join(config.root, config.distDir, envKey);
   if (!fs.existsSync(srcDir)) {
     throw new Error(`gas-static: ${srcDir} not found — build it first`);
+  }
+
+  // Host checkout = settings[repoKey] (an explicit override, used as-is) ?? a managed sparse clone
+  // (GAS-Core-bsi). The managed path refuses a dirty/diverged checkout BEFORE anything is written;
+  // either way the ADR-0003 guard below still stands between this and the rm -rf.
+  let repoRoot;
+  if (managed) {
+    repoRoot = ensureManagedCheckout_({
+      exec,
+      cacheRoot: options.cacheRoot || config.cacheRoot || defaultCacheRoot_(),
+      repo: envDef.repo,
+      cloneUrl: envDef.cloneUrl,
+      dest: envDef.dest,
+      log,
+    });
+  } else {
+    repoRoot = path.resolve(config.root, overridePath);
+    if (!fs.existsSync(path.join(repoRoot, '.git'))) {
+      throw new Error(`gas-static: ${repoRoot} does not look like a git checkout (no .git found)`);
+    }
   }
 
   // Guard first, copy second: copyDir_() opens with rm -rf on a path that came from another repo's
@@ -88,7 +107,15 @@ async function publishEnv(config, envKey, options = {}) {
   if (!yes && !chained) {
     const proceed = confirmFn ? await confirmFn(`Commit and push ${envDef.dest} to ${repoRoot}?`) : true;
     if (!proceed) {
-      log('Publish cancelled — dist/ copied locally but not committed/pushed.');
+      if (managed) {
+        // The managed checkout was verified clean before the copy, so everything dirty under dest is
+        // this publish's own. Leaving it would make the next publish refuse as DIRTY.
+        try { exec('git', ['checkout', 'HEAD', '--', envDef.dest], { cwd: repoRoot, stdio: 'ignore' }); } catch (e) { /* dest is new in this publish */ }
+        exec('git', ['clean', '-fdq', '--', envDef.dest], { cwd: repoRoot, stdio: 'ignore' });
+        log('Publish cancelled — managed checkout restored; nothing committed or pushed.');
+      } else {
+        log('Publish cancelled — dist/ copied locally but not committed/pushed.');
+      }
       return { skipped: true, reason: 'cancelled' };
     }
   }
