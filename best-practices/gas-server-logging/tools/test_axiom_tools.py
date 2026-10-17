@@ -135,5 +135,41 @@ class Apl(unittest.TestCase):
         self.assertIn("where env in ", apl)
 
 
+class WhoFilter(unittest.TestCase):
+    @staticmethod
+    def _spec():
+        def classify(e, ctx):
+            return ar.activity(e, "X", e["name"], actor=e.get("who"), group=ar.SESSION)
+        return ar.ReportSpec(classify=classify)
+
+    @staticmethod
+    def _matches():
+        mk = lambda t, n, w: {"_time": t, "data": {"name": n, "who": w}}
+        return [mk("2026-10-05T10:00:03Z", "c", None),
+                mk("2026-10-05T10:00:02Z", "b", "Bob@Example.org"),
+                mk("2026-10-05T10:00:01Z", "a", "v-alice")]
+
+    def test_substring_match_is_case_insensitive(self):
+        import argparse
+        acts = ar.collect(self._spec(), self._matches(), argparse.Namespace(who="BOB@"))
+        self.assertEqual([a.detail for a in acts], ["b"])
+
+    def test_actorless_activities_are_dropped_when_filtering(self):
+        import argparse
+        acts = ar.collect(self._spec(), self._matches(), argparse.Namespace(who="e"))
+        self.assertEqual([a.detail for a in acts], ["a", "b"])
+
+    def test_no_who_keeps_everything(self):
+        import argparse
+        self.assertEqual(len(ar.collect(self._spec(), self._matches(), argparse.Namespace(who=None))), 3)
+        self.assertEqual(len(ar.collect(self._spec(), self._matches(), None)), 3)
+
+    def test_run_exposes_the_who_option(self):
+        p = qa.build_parser("x")
+        ar.add_who_argument(p)
+        self.assertEqual(p.parse_args(["--who", "bob"]).who, "bob")
+        self.assertIsNone(p.parse_args([]).who)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

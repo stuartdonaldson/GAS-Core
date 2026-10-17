@@ -189,8 +189,9 @@ SPEC = ReportSpec(
 )
 ```
 
-It inherits `--limit/--since/--env` from the shared parser, so every repo's report
-has the same surface. Start from `tools/activity_log.example.py`; the production
+It inherits `--limit/--since/--env` from the shared parser, plus `--who SUBSTRING`
+(keep only activities whose actor contains the substring, case-insensitive;
+actor-less activities are dropped), so every repo's report has the same surface. Start from `tools/activity_log.example.py`; the production
 original is F3Go30's `tools/activity_log.py`.
 
 The one invariant: a cooked report can only say what the emitter stamps. When a

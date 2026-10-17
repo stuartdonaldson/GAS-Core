@@ -42,6 +42,11 @@ What a repo supplies (ReportSpec):
         Activities with group=SESSION, the same actor, and within this many
         seconds of each other collapse onto one line. Set to 0 to disable.
 
+Built-in option: `--who SUBSTRING` keeps only activities whose actor contains
+SUBSTRING (case-insensitive). Activities with no actor are dropped while it is
+set. The filter runs after classification, so it is applied to whatever string
+the repo's classify() chose as the actor (a name, an email, a visitor id).
+
 Invariant worth preserving in any repo's classify(): a cooked report reads the
 LOG, so it can only report what the emitter actually stamps. When a line you want
 is not expressible, the fix is a new field on the emitter, not an inference in
@@ -186,6 +191,10 @@ def collect(spec: ReportSpec, matches: list, args: argparse.Namespace) -> list:
     events = [flatten_event(m) for m in matches]
     ctx = ReportContext(indexes={n: fn(events) for n, fn in spec.indexes.items()}, args=args)
     activities = [a for a in (spec.classify(e, ctx) for e in events) if a]
+    who = getattr(args, "who", None)
+    if who:
+        needle = who.lower()
+        activities = [a for a in activities if a.actor and needle in a.actor.lower()]
     activities.reverse()  # Axiom returns newest-first; read oldest-first
     return activities
 
@@ -211,10 +220,17 @@ def render(spec: ReportSpec, activities: list, args: argparse.Namespace) -> None
     print("=" * 96)
 
 
+def add_who_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--who", metavar="SUBSTRING", default=None,
+                        help="keep only activities whose actor contains SUBSTRING (case-insensitive); "
+                             "activities with no actor are dropped")
+
+
 def run(spec: ReportSpec, argv: list | None = None) -> int:
     """Entry point a repo's report module calls from its own __main__ guard."""
     parser = build_parser(spec.classify.__doc__ or spec.title)
     parser.description = (sys.modules["__main__"].__doc__ or spec.title)
+    add_who_argument(parser)
     if spec.add_arguments:
         spec.add_arguments(parser)
     args = parser.parse_args(argv)
