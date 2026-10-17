@@ -1,6 +1,6 @@
 # LibIdentity Changelog
 
-## v1.0.0 -- unreleased (tag libidentity-v1.0.0 pending)
+## v1.0.0 -- 2026-10-17 (tag libidentity-v1.0.0)
 
 Initial canonical version. `LibIdentity_verify` extracted from
 `NUUC-Dispatch/src/Assertion.js` `Assertion_verify` (the brokered-identity
