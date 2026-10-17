@@ -70,6 +70,17 @@ one as a non-stale fallback (see `deploymentIdKey` below).
   cannot drift between envs — they are versions of the same project.
 - **Resolver:** `anchorMatch(anchor)`, or the package default `standardChain(anchor)`.
 
+### Static front ends: `ANYONE_ANONYMOUS` and the app-level ACL (applies to both models)
+
+A static front end (see [`gas-static-frontend`](../gas-static-frontend/README.md)) calls the web
+app cross-origin from a page Google does not host, so the deployment **requires
+`access: ANYONE_ANONYMOUS`**. Google's login gate is then gone: **the app-level ACL is the entire
+security boundary.** Every privileged route must authenticate the caller itself (a verified
+identity such as a LibIdentity assertion or a GIS ID token, keyed on `sub`) and authorize it, and
+must fail closed. Anything reachable without that check is reachable by the whole internet.
+Run the pre-flight in gas-static-frontend §"The security boundary this creates" before flipping the
+manifest.
+
 ### Model B — two script projects (prod + sit/test)
 
 Fully separate script projects per environment: separate script ids, deployments, Script

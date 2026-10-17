@@ -494,7 +494,7 @@ can only act as you via Workspace domain-wide delegation, which doesn't exist fo
 `@gmail.com`. The `executeAs: USER_DEPLOYING` web app already gives the backend full
 Gmail/Drive/Calendar as the owner with zero extra infrastructure.
 
-### Two identity models — pick deliberately
+### Two identity models — B is the default for multi-app or long-session front ends
 
 The estate runs both. They differ in where verification happens and what the page holds between
 visits, and that difference decides the per-request cost, the session length, and what "add a
@@ -508,27 +508,61 @@ second app" costs.
 | Session length | Google ID token lifetime (~1 h) → re-prompt | 45 days, cached in `localStorage`, renewed by a normal sign-in near `exp` |
 | Estate cost | one OAuth client ID + consent screen **per app** | one, shared; adding an app is a row in `ASSERTION_TARGETS` + a minted key |
 | Failure posture | fail-closed on the `sub` allowlist | fail-closed (`tier: 'NONE'`), keyed on `sub`, `aud`-scoped so an assertion for one app is useless at another |
-| Contract | this README | `NUUC-Dispatch/docs/interfaces/signed-identity-assertion.md`, its ADR-0002/0003 |
+| Contract | this README | [`docs/interfaces/signed-identity-assertion.md`](../../docs/interfaces/signed-identity-assertion.md) (estate-wide, owned here); verifier: [`libs/LibIdentity`](../../libs/LibIdentity/libIdentity.js) |
 
-**B is the better architecture once there is more than one app:** it removes a Google round trip
-from every privileged call, gives the iOS/Safari story a 45-day artifact instead of a 1-hour one
-(see §"Storage persistence" above), and makes adding an app cheap. **A remains the right answer for
-a single anonymous app with a small allowlist** — no dispatcher, no key distribution, no second
-deployment.
+**Default: use B** for any front end that serves more than one app, or whose users stay signed in
+across sessions. It removes a Google round trip from every privileged call, gives the iOS/Safari
+story a 45-day artifact instead of a 1-hour one (see §"Storage persistence" above), and makes
+adding an app cheap: one OAuth client and consent screen for the whole estate. **A stays
+documented and correct for a single anonymous app with a small allowlist** — no dispatcher, no key
+distribution, no second deployment. Choose A deliberately, not by omission.
 
-Three weaknesses of B to fix before it spreads further — none is a reason not to use it, and all
-three are cheaper to state now than to discover later:
+**Worked example — adding a new app, `myapp`, to the brokered estate:**
 
-1. **The verifier is copy-paste.** The reference implementation says so in its own comment: target
-   apps copy it. That is duplication on the side that matters most — a verifier is security code,
-   and a fail-open divergence in one copy is silent. It belongs in a shared GAS library
-   (`libs/`), not in each app.
+1. *Register the target at the broker.* In NUUC-Dispatch add `myapp: 'ASSERTION_KEY_MYAPP_1'` to
+   `ASSERTION_TARGETS`; mint a secret (>= 32 random bytes, base64) and store it as Script
+   Property `ASSERTION_KEY_MYAPP_1` in **both** the broker and `myapp`.
+2. *Page.* On sign-in, POST the Google ID token and `aud: 'myapp'` to the dispatcher's
+   `verify_identity`; cache the returned `{assertion, exp}` in `localStorage`; send the assertion
+   (not the ID token) with every privileged request to `myapp`; re-run the sign-in near `exp`.
+3. *Backend (`myapp`).* Vendor `libs/LibIdentity/libIdentity.js` (see the repo README) and verify,
+   then run the app's own ACL on `sub`:
+
+   ```js
+   var ID_OPTIONS = {
+     targets: { myapp: 'ASSERTION_KEY_MYAPP_1' }, // this app's own row only
+     failure: 'deny'                              // declared; there is no "allow" posture
+   };
+
+   function requireIdentity_(assertion) {
+     var id = LibIdentity_verify(assertion, 'myapp', ID_OPTIONS);
+     if (!id.valid) return null;                  // anonymous: deny, do not look further
+     return id;                                   // key everything on id.sub, not id.email
+   }
+
+   function doPost(e) {
+     var body = JSON.parse(e.postData.contents);
+     var id = requireIdentity_(body.assertion);
+     if (!id || !isAllowed_(id.sub)) return json_({ ok: false, tier: 'NONE' });
+     // ... privileged work
+   }
+   ```
+
+The assertion proves *who*; `isAllowed_` (the app-level ACL) decides *what*, and with
+`ANYONE_ANONYMOUS` it is the whole security boundary (see
+[gas-deployment §Deployment Models](../gas-deployment/README.md#deployment-models-one-script-project-vs-two)).
+
+Weaknesses of B, none a reason not to use it, all documented in the
+[contract](../../docs/interfaces/signed-identity-assertion.md#limits-of-this-design):
+
+1. **The verifier was copy-paste — now resolved.** It is a shared library
+   ([`libs/LibIdentity`](../../libs/LibIdentity/libIdentity.js)) with a declared failure posture and a
+   fail-closed test matrix. Do not copy-edit it into an app; pin and re-vendor it.
 2. **HMAC is symmetric.** Every target app holds a key that can *mint* assertions for itself.
-   Acceptable inside one owner's estate; state it as a limitation in the contract, and name the
-   upgrade path (RS256 + a dispatcher-published JWKS route) rather than discovering it later.
+   Acceptable inside one owner's estate; upgrade path is RS256 + a broker-published JWKS route.
 3. **No revocation inside the 45-day window.** The only lever is rotating `kid`, which invalidates
-   every session for that app at once. Fine for low-privilege tiers; pair a shorter TTL with any
-   future tier that can destroy data.
+   every session for that app at once. Pair a shorter TTL with any future tier that can destroy
+   data.
 
 ### Consent-screen posture across the estate — three tiers, not two
 
