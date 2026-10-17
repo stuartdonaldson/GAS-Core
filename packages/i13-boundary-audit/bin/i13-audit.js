@@ -121,14 +121,16 @@ async function enforce(srcDir, i13Config) {
   let errorCount = 0;
   for (const r of results) {
     for (const msg of r.messages) {
-      if (msg.ruleId === 'i13/boundary-ownership') {
+      if (msg.ruleId === 'i13/boundary-ownership' || msg.ruleId === 'i13/type-leak') {
         errorCount++;
-        console.log(`${path.relative(srcDir, r.filePath)}:${msg.line}:${msg.column}  ${msg.message}`);
+        console.log(
+          `${path.relative(srcDir, r.filePath)}:${msg.line}:${msg.column}  [${msg.ruleId}] ${msg.message}`
+        );
       }
     }
   }
 
-  console.log(`\nI13 boundary-ownership violations: ${errorCount}`);
+  console.log(`\nI13 violations (boundary-ownership + type-leak): ${errorCount}`);
 
   const exceptions = listExceptions(i13Config);
   console.log(`\nDeclared exceptions (${exceptions.length}):`);

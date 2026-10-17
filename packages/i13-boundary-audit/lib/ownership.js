@@ -13,6 +13,8 @@
 
 const { toArray } = require('./util.js');
 const boundaryOwnershipRule = require('./rules/boundaryOwnership.js');
+const typeLeakRule = require('./rules/typeLeak.js');
+const { defaultHandleMethods } = require('./gasHandleMethods.js');
 
 /**
  * Validates an i13.config shape. Throws a single Error enumerating every problem found (not
@@ -38,6 +40,37 @@ function validateConfig(i13Config) {
         `ownership["${identifier}"] must be a non-empty file glob string, or a non-empty ` +
           `array of them; got ${JSON.stringify(value)}`
       );
+    }
+  }
+
+  // Type-leak declarations (GAS-Core-0ws). Absent is fine (silent no-op); present-but-malformed
+  // is a config error, same as an ownership entry.
+  if (i13Config && i13Config.platformTypes !== undefined) {
+    const t = i13Config.platformTypes;
+    if (!Array.isArray(t) || t.some((x) => typeof x !== 'string' || x.trim() === '')) {
+      problems.push(`platformTypes must be an array of non-empty type-name strings; got ${JSON.stringify(t)}`);
+    }
+  }
+  if (i13Config && i13Config.publicSurface !== undefined) {
+    const ps = i13Config.publicSurface;
+    if (ps === null || typeof ps !== 'object' || Array.isArray(ps)) {
+      problems.push(`publicSurface must be an object of owner-file glob -> function-name glob(s); got ${JSON.stringify(ps)}`);
+    } else {
+      for (const [file, value] of Object.entries(ps)) {
+        const pats = toArray(value);
+        if (pats.length === 0 || pats.some((x) => typeof x !== 'string' || x.trim() === '')) {
+          problems.push(
+            `publicSurface["${file}"] must be a non-empty function-name glob string, or a ` +
+              `non-empty array of them; got ${JSON.stringify(value)}`
+          );
+        }
+      }
+    }
+  }
+  for (const key of ['handleMethods', 'extraHandleMethods']) {
+    const v = i13Config && i13Config[key];
+    if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || x.trim() === ''))) {
+      problems.push(`${key} must be an array of non-empty method-name strings; got ${JSON.stringify(v)}`);
     }
   }
 
@@ -89,7 +122,16 @@ function validateConfig(i13Config) {
 function buildI13Blocks(i13Config, options = {}) {
   const ownership = (i13Config && i13Config.ownership) || {};
   const identifiers = Object.keys(ownership);
-  if (identifiers.length === 0) return [];
+  const platformTypes = (i13Config && i13Config.platformTypes) || [];
+  const publicSurface = (i13Config && i13Config.publicSurface) || {};
+
+  // Type-leak checking needs a declared surface AND something to detect against: platform
+  // types (Tier A) or governed identifiers (Tier B). Either missing -> that tier is a no-op.
+  const hasSurface = Object.keys(publicSurface).length > 0;
+  const typeLeakActive =
+    hasSurface && ((Array.isArray(platformTypes) && platformTypes.length > 0) || identifiers.length > 0);
+
+  if (identifiers.length === 0 && !typeLeakActive) return [];
 
   validateConfig(i13Config);
 
@@ -97,13 +139,29 @@ function buildI13Blocks(i13Config, options = {}) {
   const filesGlob = options.files || ['**/*.js'];
   const baseDir = options.baseDir || process.cwd();
 
+  const rules = {};
+  if (identifiers.length > 0) {
+    rules['i13/boundary-ownership'] = ['error', { ownership, exceptions, baseDir }];
+  }
+  if (typeLeakActive) {
+    const typeLeakOptions = { ownership, platformTypes, publicSurface, baseDir };
+    if (i13Config.handleMethods || i13Config.extraHandleMethods) {
+      typeLeakOptions.handleMethods = [
+        ...(i13Config.handleMethods || defaultHandleMethods),
+        ...(i13Config.extraHandleMethods || []),
+      ];
+    }
+    if (i13Config.requireReturns === true) typeLeakOptions.requireReturns = true;
+    rules['i13/type-leak'] = ['error', typeLeakOptions];
+  }
+
   return [
     {
       files: filesGlob,
-      plugins: { i13: { rules: { 'boundary-ownership': boundaryOwnershipRule } } },
-      rules: {
-        'i13/boundary-ownership': ['error', { ownership, exceptions, baseDir }],
+      plugins: {
+        i13: { rules: { 'boundary-ownership': boundaryOwnershipRule, 'type-leak': typeLeakRule } },
       },
+      rules,
     },
   ];
 }
