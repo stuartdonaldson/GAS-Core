@@ -12,6 +12,7 @@ const { publishEnv } = require('./lib/publish.js');
 const { assertPublishedBuild } = require('./lib/assert.js');
 const { readBuildInfo_ } = require('./lib/buildInfo.js');
 const { deployHooks, summaryRows } = require('./lib/deploy.js');
+const { ManagedCheckoutError } = require('./lib/managedCheckout.js');
 
 function runStatic(config) {
   // Shared by deployHooks() and summaryRows() so the summary can report what the hooks actually
@@ -39,4 +40,5 @@ function runStatic(config) {
 // the alternative is the duplicate regex F13 was filed about.
 module.exports = {
   runStatic, buildEnv, publishEnv, assertPublishedBuild, deployHooks, summaryRows, readBuildInfo_,
+  ManagedCheckoutError,
 };

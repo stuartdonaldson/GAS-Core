@@ -12,6 +12,15 @@ gas-server-logging Rule 3 reserves for `GasLogger` and `query_axiom.py`; gas-sta
 `assertPublishedBuild` is unchanged: it compares `version.json`'s `env` (the gas-static env key) and
 never consults `BUILD_INFO.env`.
 
+### Managed host checkout (GAS-Core-bsi)
+
+`publishEnv` no longer requires `staticRepoPath`/`nuucStaticRepoPath`. When `settings[envDef.repoKey]`
+is unset and `envDef.repo` (the `owner/name` slug from `gas-project.json` `staticHosts.<host>.repo`) is
+declared, it keeps a sparse, blobless clone under `~/.cache/gas-static/<owner>__<name>`, fast-forwards it
+before each publish, and refuses with a named `ManagedCheckoutError` (`DIRTY`, `DIVERGED`, ...) on an
+unsafe checkout. New optional env keys: `repo`, `cloneUrl`; new publish option: `cacheRoot`. A set
+`settings[repoKey]` keeps working exactly as before, as an override. This part is additive.
+
 ### Migrating from 1.x
 
 1. In the consumer's static config, delete `envField: 'env'` from `webappUrl`
@@ -23,7 +32,9 @@ never consults `BUILD_INFO.env`.
 3. `BUILD_INFO` must carry a `target`. gas-deploy's `buildInfoStamper` writes it unless the consumer
    remapped it away (`fields: { target: 'env' }`, or a hand-written stamper that only writes `env`):
    remove that remap and stamp `env` separately as `dev`/`test`/`prod`.
-4. Once on gas-deploy 2.0.0 (default lowercase `env`), delete any `axiomEnv` shim in
+4. Optional (GAS-Core-bsi): add `repo: host.repo` to each env in the static config and delete
+   `staticRepoPath`/`nuucStaticRepoPath` from `local.settings.json`.
+5. Once on gas-deploy 2.0.0 (default lowercase `env`), delete any `axiomEnv` shim in
    `local.settings.json`.
 
 ## 1.3.2

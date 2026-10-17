@@ -113,9 +113,11 @@ keeps.
 | `settingsPath` | Default `<root>/local.settings.json`. |
 | `commitMessage` | `({ env, envDef }) => string`, for the publish commit. Default `Publish static <env> (<label>)`. |
 
-Per env: `deployTarget` (the `BUILD_INFO.target` value this env expects, e.g. `TEST`), `repoKey` (the
-`local.settings.json` key holding the sibling static-host repo's path), `dest` (path within that
-repo this env publishes to), `label`.
+Per env: `deployTarget` (the `BUILD_INFO.target` value this env expects, e.g. `TEST`), `repo` (the
+host repo's `owner/name` slug, `staticHosts.<host>.repo` in `gas-project.json`; enables the managed
+checkout below), `repoKey` (the `local.settings.json` key holding an *optional override* path to an
+existing checkout of that host repo), `dest` (path within that repo this env publishes to), `label`.
+Optional: `cloneUrl` (default `https://github.com/<repo>.git`).
 
 Standard placeholders, always stamped, present in all three pre-package copies:
 
@@ -175,9 +177,9 @@ built.
 ## Publish
 
 - `dest` is validated **before anything is written** (see *Publish safety* below).
-- Missing `envs[env].repoKey` in `local.settings.json` = **warn and skip**, not a hard failure —
-  a fresh clone without the sibling static-host repo checked out should not fail a deploy.
-- A `repoKey` path that isn't a git checkout = throw.
+- Host checkout = `settings[repoKey]` (override) **??** the managed checkout (below). With neither
+  a `repoKey` value nor an `envs[env].repo` slug = **warn and skip**, not a hard failure.
+- A `repoKey` override path that isn't a git checkout = throw.
 - `git status`/`git add` are always scoped to `envs[env].dest` — an unscoped add publishes
   another app's half-finished work out of a shared host repo (RCV's finding).
 - An already-clean `dest` is a no-op (skipped, not committed).
@@ -187,6 +189,28 @@ built.
 - `git fetch` + `git pull --rebase --autostash` run immediately before the publish commit, and the
   checkout must be on a branch with a tracking branch. A failed push raises a named diagnostic
   saying the commit exists locally and how to finish it.
+
+### Managed host checkout
+
+When `settings[repoKey]` is unset and `envs[env].repo` is declared, gas-static keeps its own checkout
+at `<cacheRoot>/<owner>__<name>`. `cacheRoot` is the `cacheRoot` publish option, then
+`config.cacheRoot`, then `$GAS_STATIC_CACHE`, then `$XDG_CACHE_HOME/gas-static`, then
+`~/.cache/gas-static`.
+
+- Absent: `git clone --filter=blob:none --sparse <cloneUrl>` then `git sparse-checkout set <dest>`,
+  so only this project's own folder is on disk.
+- Present: it must be clean and have the expected `origin`; it is fetched and fast-forwarded, and
+  `<dest>` is added to the sparse set, before the publish writes anything.
+- Every unsafe state is a named `ManagedCheckoutError` (`.code`), raised before the publish's `rm -rf`
+  can run: `DIRTY` (any uncommitted change anywhere in the checkout), `DIVERGED` (local and upstream
+  both have commits the other lacks), `NO_UPSTREAM`, `WRONG_ORIGIN`, `NOT_A_CHECKOUT` (the path holds
+  something that is not a git checkout; never replaced), `INVALID_REPO`, `CLONE_FAILED`, `SYNC_FAILED`.
+  The package never resets, cleans or deletes the managed checkout itself; the one exception is a
+  declined confirmation, which restores only `<dest>` (clean beforehand by construction).
+- The ADR-0003 `PUBLISHERS.md` guard below applies unchanged, after the sync, so the manifest it
+  reads is current.
+- Consumers: `repoKey` / `staticRepoPath` becomes an optional per-machine override for a developer
+  who already has a checkout.
 
 ## Publish safety — the host repo's `PUBLISHERS.md`
 
