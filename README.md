@@ -8,7 +8,8 @@ the former `GAS-Practices` folder (now a redirect — see its README).
 | Path | Purpose |
 |------|---------|
 | `best-practices/` | GAS-specific methodology docs (testing, deployment, logging, email templating, etc.) |
-| `libs/` | Canonical, versioned shared GAS library code (e.g. `libs/LibSheets/`) |
+| `libs/` | Canonical, versioned shared GAS library code (e.g. `libs/LibSheets/`, `libs/LibIdentity/`) |
+| `docs/interfaces/` | Estate-wide contracts between apps (e.g. `signed-identity-assertion.md`) |
 
 ## Consuming `libs/` from an app project
 
