@@ -147,7 +147,12 @@ function redact(payload, authField = DEFAULT_ADMIN.authField) {
  * One call against a deployed webapp. Rejects on a non-JSON response so a caller can retry the
  * propagation race; the diagnostic quotes the response, never the request.
  */
-async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, authField, ungatedActions, timeoutMs } = {}) {
+async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, authField, ungatedActions, timeoutMs, ...rest } = {}) {
+  // Removed in 2.0.0 (GAS-Core-e5z). Refused loudly: silently ignoring it would turn a stale
+  // Playwright-session config into a bare POST against a webapp that may not be ANYONE_ANONYMOUS.
+  if ('postFn' in rest) {
+    throw new Error('gas-deploy: the postFn transport override was removed in 2.0.0 (GAS-Core-e5z) — delete it from your call-webapp config; the webapp must be ANYONE_ANONYMOUS.');
+  }
   const url = execUrl(deploymentId, cmd);
   const payload = buildPayload({ action, extraBody, secret, authField, ungatedActions, cmd });
   const result = await post(url, payload, { timeoutMs });

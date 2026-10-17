@@ -46,13 +46,16 @@ test('the secret travels in the POST body, never the URL', () => {
   }).finally(() => mock.restoreAll());
 });
 
-test('call() has no transport override: a postFn option is ignored, never invoked', async () => {
+test('call() refuses a postFn option (removed in 2.0.0) before any request', async () => {
   const seen = fakeHttps({ ok: true });
   let invoked = false;
   try {
-    await call('AKfycA', { action: 'listSheets', secret: SECRET, postFn: async () => { invoked = true; return { ok: true }; } });
+    await assert.rejects(
+      call('AKfycA', { action: 'listSheets', secret: SECRET, postFn: async () => { invoked = true; return { ok: true }; } }),
+      /postFn transport override was removed in 2\.0\.0/
+    );
     assert.equal(invoked, false);
-    assert.equal(seen.body.action, 'listSheets', 'the request went through the package transport');
+    assert.equal(seen.body, undefined, 'no request was sent');
   } finally { mock.restoreAll(); }
 });
 

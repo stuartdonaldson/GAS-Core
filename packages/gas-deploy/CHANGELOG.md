@@ -12,7 +12,7 @@ now errors. Test count 96 -> 113.
   Properties. Both polls use `verifyOptions`, so a deploy takes at least one extra settle interval.
   The ledger entry is still written on a readiness failure, as it was on a final-assert failure.
 - **`postFn` removed (GAS-Core-e5z).** Gone from `bin/call-webapp.js` config and from
-  `lib/webapp.js` `call()` (a passed `postFn` is ignored). Its only consumer, PracticeMix, is
+  `lib/webapp.js` `call()` (passing `postFn` to either now throws a named error before any request). Its only consumer, PracticeMix, is
   `ANYONE_ANONYMOUS` and passes none. In `lib/verify.js` the injection point is renamed `transport`
   and is a unit-test seam, not documented config.
 - **The admin secret is a declared option (GAS-Core-8w0).**
@@ -33,8 +33,8 @@ now errors. Test count 96 -> 113.
 
 1. **`postFn` (call-webapp config).** Delete `postFn` from the config passed to
    `bin/call-webapp.js` `run()`. Delete any `postFn` passed to `lib/webapp.js` `call()`. It was
-   only for `access:ANYONE` webapps; deploy the webapp `ANYONE_ANONYMOUS` instead. The option is now
-   silently ignored, so a leftover one sends a bare POST.
+   only for `access:ANYONE` webapps; deploy the webapp `ANYONE_ANONYMOUS` instead. Passing it now
+   throws a named error before any request, so a leftover one cannot silently send a bare POST.
 2. **`verifyOptions.postFn`.** Rename to `verifyOptions.transport` only if a test injects a fake
    version source. Production configs should not set it. `assertDeployedVersion`,
    `queryLiveVersion` and `pingWebapp` options take `transport`, not `postFn`.

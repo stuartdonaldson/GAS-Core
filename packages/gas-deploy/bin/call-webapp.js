@@ -92,6 +92,9 @@ function resolveEnvDeploymentId(config, envKey, settings, { exec = execSync } = 
 }
 
 async function run(config, argv = process.argv) {
+  if (config && 'postFn' in config) {
+    throw new Error('gas-deploy: the postFn transport override was removed in 2.0.0 (GAS-Core-e5z) — delete it from your call-webapp config; the webapp must be ANYONE_ANONYMOUS.');
+  }
   const { action, cmd, env, extraBody } = parseArgs(argv);
   if (!action) {
     throw new Error("Usage: call-webapp <action> [--cmd admin] [--env sit] [--body '{\"k\":\"v\"}']");
