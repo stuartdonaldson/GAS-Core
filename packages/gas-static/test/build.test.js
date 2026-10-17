@@ -134,3 +134,25 @@ test('GAS-Core-3v2: envField is still honoured as an explicit override', () => {
   config.webappUrl.envField = 'env';
   assert.doesNotThrow(() => buildEnv(config, 'sit'));
 });
+
+test('GAS-Core-3v2: envs[env].target supplies the label while deployTarget stays a lowercase lookup key', () => {
+  const root = makeProject_();
+  writeBuildInfo_(root, { target: 'TEST' });
+  const config = baseConfig_(root);
+  config.envs.sit = { ...config.envs.sit, deployTarget: 'test', target: 'TEST' };
+  assert.doesNotThrow(() => buildEnv(config, 'sit'));
+});
+
+test('GAS-Core-3v2: with target set, a mismatch names envs.<env>.target in the error', () => {
+  const root = makeProject_();
+  writeBuildInfo_(root, { target: 'PRODUCTION' });
+  const config = baseConfig_(root);
+  config.envs.sit = { ...config.envs.sit, deployTarget: 'test', target: 'TEST' };
+  assert.throws(() => buildEnv(config, 'sit'), /not "TEST" \(envs\.sit\.target;/);
+});
+
+test('GAS-Core-3v2: target absent falls back to deployTarget, and the error names deployTarget', () => {
+  const root = makeProject_();
+  writeBuildInfo_(root, { target: 'PRODUCTION' });
+  assert.throws(() => buildEnv(baseConfig_(root), 'sit'), /not "TEST" \(envs\.sit\.deployTarget;/);
+});

@@ -113,7 +113,7 @@ keeps.
 | `settingsPath` | Default `<root>/local.settings.json`. |
 | `commitMessage` | `({ env, envDef }) => string`, for the publish commit. Default `Publish static <env> (<label>)`. |
 
-Per env: `deployTarget` (the `BUILD_INFO.target` value this env expects, e.g. `TEST`), `repo` (the
+Per env: `target` (optional; the `BUILD_INFO.target` label this env expects, e.g. `TEST`), `deployTarget` (the fallback for `target`, so it must be the label when `target` is absent; consumers that use `deployTarget` as a lowercase `gas-project.json` lookup key set `target` instead), `repo` (the
 host repo's `owner/name` slug, `staticHosts.<host>.repo` in `gas-project.json`; enables the managed
 checkout below), `repoKey` (the `local.settings.json` key holding an *optional override* path to an
 existing checkout of that host repo), `dest` (path within that repo this env publishes to), `label`.
@@ -167,7 +167,7 @@ Written alongside each stamped page, and the *only* thing `assertPublishedBuild`
 ## Env-agreement assertion
 
 `buildEnv` resolves `webappUrl`/`version` from `BUILD_INFO` and requires
-`BUILD_INFO[envField] === envs[env].deployTarget` *before* writing anything, where `envField` defaults to `target` — the deploy-contract field, never the logging `env`. This is the guard
+`BUILD_INFO[envField] === (envs[env].target ?? envs[env].deployTarget)` *before* writing anything, where `envField` defaults to `target` — the deploy-contract field, never the logging `env`. This is the guard
 only one of the three pre-package copies had (GActionSheet) — it is what prevents publishing a
 page pointed at last deploy's URL because the version file wasn't re-stamped for the env being
 built.

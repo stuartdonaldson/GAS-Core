@@ -26,9 +26,15 @@ unsafe checkout. New optional env keys: `repo`, `cloneUrl`; new publish option: 
 1. In the consumer's static config, delete `envField: 'env'` from `webappUrl`
    (or set `envField: 'env'` to keep the 1.x behaviour, which is only correct while `env` still
    carries the deploy label).
-2. Every `envs[env].deployTarget` must equal what the deploy stamps into `BUILD_INFO.target`, i.e. the
+2. Each env's expected label must equal what the deploy stamps into `BUILD_INFO.target`, i.e. the
    gas-deploy target `label` (`TEST`, `PRODUCTION`, `SIT`, ...), not the lowercase value 1.x compared
-   against `env`.
+   against `env`. New optional `envs[env].target` supplies it; `deployTarget` is the fallback, so a
+   consumer that uses `deployTarget` as a lowercase `gas-project.json` lookup key leaves it alone:
+   - GActionSheet, NUUTS-Shell, NUUTS-Track, NUUTS-Track-portal: add `target: 'TEST'` /
+     `target: 'PRODUCTION'` to each env and drop `envField:'env'`.
+   - NDocs: add `target: 'SIT'` (its gas-deploy label) and drop `envField:'env'`; its
+     `STATIC_BUILD_ENV_` placeholder keeps reading `deployTarget`, so the page is unchanged.
+   - PracticeMix, RankChoiceVoting: `deployTarget` already holds the label; nothing to add.
 3. `BUILD_INFO` must carry a `target`. gas-deploy's `buildInfoStamper` writes it unless the consumer
    remapped it away (`fields: { target: 'env' }`, or a hand-written stamper that only writes `env`):
    remove that remap and stamp `env` separately as `dev`/`test`/`prod`.

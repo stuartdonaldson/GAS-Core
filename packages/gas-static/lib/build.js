@@ -36,10 +36,14 @@ function resolveWebappUrl_(config, envKey) {
   const buildInfo = readBuildInfo_(filePath);
   const envField = spec.envField || 'target';
 
-  if (buildInfo[envField] !== envDef.deployTarget) {
+  // `target` (per-env, optional) is the BUILD_INFO label; `deployTarget` is the fallback and keeps its
+  // older meaning for consumers that also use it as a gas-project.json lookup key.
+  const expectedField = envDef.target !== undefined ? 'target' : 'deployTarget';
+  const expected = envDef[expectedField];
+  if (buildInfo[envField] !== expected) {
     throw new Error(
       `gas-static: ${spec.file} is currently stamped for ${envField}="${buildInfo[envField]}", ` +
-      `not "${envDef.deployTarget}" (needed for env '${envKey}'). Deploy that target first so ` +
+      `not "${expected}" (envs.${envKey}.${expectedField}; needed for env '${envKey}'). Deploy that target first so ` +
       `${spec.file} reflects the deployment this build is meant to publish.`
     );
   }
