@@ -91,11 +91,83 @@ whether `T14`'s conformance-test obligation is met for each real boundary operat
 outside this tool's reach. Anyone reading a green run should read it as "identifier confinement
 holds against what this project declared," not "I13 is done here."
 
-A second, smaller version of the same limit: this tool checks identifiers, not **returned
-values**. A module that re-exports a platform object it did not name directly (a type-leak) is
-invisible to it. That amendment to I13 is under the owner's review in a parallel session
-(`GAS-Core-kto`) and is deliberately out of scope here — eslint cannot see return types regardless
-of how that ruling lands.
+The type half of I13 (the draft type-leak amendment, `knowledge-base/proposals/i13-type-leak-amendment-draft.md`,
+unruled, DevStandard-82fh) is covered only partially, by the opt-in check in the next section. Read
+"Soundness limits" there before treating a green run as the amendment discharged.
+
+## Type-leak check (opt-in; GAS-Core-0ws)
+
+The identifier rule cannot see a module that is the sole owner of `SpreadsheetApp` and still hands a
+raw `Sheet` to every caller. Because I13 confines the platform identifier to one file, a raw
+platform object can only *originate* in the owning file, so the check is intra-file. It is
+declared, not inferred, and consumes the amendment's DRAFT wording without presuming the ruling.
+
+Config additions (all optional; any missing declaration is a silent no-op for that tier):
+
+```js
+platformTypes: ['Sheet', 'Spreadsheet', 'Range', 'Folder', 'File', 'Blob'],
+publicSurface: {            // owner-file glob -> function-name glob(s) forming its exported surface
+  'src/SheetAdapter.js': 'SheetAdapter_*',   // e.g. NDocs' Module_function convention
+},
+// optional:
+requireReturns: false,      // true: a surface function that returns a value must carry @returns
+extraHandleMethods: [],     // extra SDK method names that return a platform handle (Tier B)
+handleMethods: [...],       // or replace the built-in list (lib/gasHandleMethods.js)
+```
+
+Both tiers examine only **top-level functions in a file matching a `publicSurface` key whose name
+matches that key's pattern**. Nothing else is ever reported: not private helpers, not nested
+functions, not files with no surface declaration.
+
+- **Tier A (JSDoc surface).** A surface function whose `@returns` / `@param` type names a
+  `platformTypes` entry (including inside unions, generics, arrays, record types and
+  `GoogleAppsScript.*.Sheet`-style namespaces) is reported at the tag's line. `requireReturns`
+  additionally reports a value-returning surface function with no `@returns`, narrowing the hole
+  from "unannotated" to "misannotated"; it is off by default because it fires on every
+  unannotated function in a project that has not adopted the annotation discipline yet.
+- **Tier B (intra-file return taint).** For each surface function, each `return` expression is
+  resolved through ESLint scope analysis (variable initialisers and reassignments, `||`/`&&`,
+  `?:`, `await`) back to a governed global from `ownership`, and propagated only through calls
+  to handle-returning SDK methods (`getSheetByName`, `openById`, `getRange`, ...). So
+  `return SpreadsheetApp.openById(id).getSheetByName(n)` is reported, while
+  `return SpreadsheetApp.openById(id).getUrl()` and `.getValues()` are not. It is gated on the
+  surface declaration: a private helper handing a raw `Spreadsheet` to another function inside
+  the owning file is a legitimate internal handoff and is never reported; only an escape from a
+  surface function is.
+
+`bin/i13-audit.js` reports both rules (`[i13/boundary-ownership]`, `[i13/type-leak]`).
+
+### Soundness limits (read before trusting a green run)
+
+Neither tier is sound. Only a real type checker is (tracked separately as the `tsc --checkJs`
+decision; this package installs no TypeScript).
+
+- **Tier A verifies a declaration, not a value.** It proves the JSDoc does not *say* `Sheet`. A
+  function annotated `@returns {Store}` that actually returns a raw `Sheet` passes. A missing
+  annotation passes unless `requireReturns` is on, and even then a *wrong* annotation passes.
+  Only `@returns` / `@param` are read; `@typedef`, `@type`, `@callback`, and types split across
+  lines are not.
+- **Tier B loses the trail** through:
+  - **object properties**: `return { sheet: sheet }`, `return holder.sheet`;
+  - **array elements**: `return [sheet]`, `return sheets[0]`, destructuring;
+  - **callbacks**: a raw object handed to or returned from a function passed as an argument,
+    including returns inside `.map(...)` and the like (those belong to the callback);
+  - **values returned from helper calls**: `return _helper()` where `_helper` returns a raw
+    object is not followed (the analysis does not cross function boundaries, even inside the
+    file);
+  - SDK handle-returning methods not in the built-in list (a missed leak by design: the opposite
+    default would flag every `.getUrl()`), enum/constant objects (`SpreadsheetApp.Dimension`),
+    and any tainted value reaching the surface by a path other than `return` (a module-level
+    variable the caller reads, a global assigned inside a function).
+- **Scope.** Only top-level functions matching the declared surface pattern are examined; the
+  surface itself is a declaration, so a function the pattern does not name is out of reach.
+
+**A green run covers:** no surface function *declares* a platform type in `@returns`/`@param`, and
+none returns a value that visibly derives from a governed global through variables and listed
+handle methods in the same function. **It does not cover** the amendment's actual obligation: that
+the owner's exported surface names no platform type and every handle it returns is a type the owner
+defines. A green run must never be read as the amendment discharged, in the same sense that the
+identifier check's green run is not "I13 done".
 
 ## Using it in CI
 
@@ -167,7 +239,7 @@ this.
 
 ## Verified against
 
-`test/ownership.test.js` and `test/rule.test.js` (`npm test`, needs `eslint` resolvable — see
+`test/ownership.test.js`, `test/rule.test.js` and `test/typeLeak.test.js` (`npm test`, needs `eslint` resolvable — see
 Dependencies). Run against NDocs (`src/`) for AC5: a five-identifier ownership map
 (`PropertiesService`, `SpreadsheetApp`, `AdminDirectory`, `CacheService`, `ScriptApp`) correctly
 reported exactly the two known breaches from `NDocs-40d` — `Gate.js` (lines 50, 164, 199) and

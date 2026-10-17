@@ -43,6 +43,17 @@ module.exports = {
     SpreadsheetApp: ['libs/LibSheets/libSheets.js'],
   },
 
+  // OPTIONAL type-leak check (GAS-Core-0ws, README.md "Type-leak check"). Omit both
+  // `platformTypes` and `publicSurface` and it is a silent no-op. Illustrative values only:
+  // platformTypes names the GAS types a public surface must not expose; publicSurface maps an
+  // owner file to the name pattern that forms its exported surface.
+  platformTypes: ['Spreadsheet', 'Sheet', 'Range', 'Folder', 'File', 'Blob'],
+  publicSurface: {
+    'libs/LibSheets/libSheets.js': ['SpreadsheetManager*', 'ManagedSheet*'],
+  },
+  // requireReturns: true,            // surface functions that return a value must have @returns
+  // extraHandleMethods: ['myHandle'], // extra SDK methods that return a platform handle
+
   // exceptions: documented, REASONED deviations from the ownership map above. Each entry
   // suppresses enforcement for exactly one (identifier, file) pair. An entry without a
   // non-empty `reason` is a config error (buildI13Blocks/listExceptions throw) — never a
