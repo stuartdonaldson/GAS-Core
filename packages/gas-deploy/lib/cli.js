@@ -15,8 +15,13 @@
  *   4. clasp push          — captured stdout, echoed, so the revision is parseable (#3)
  *   5. resolve deployment  — from the live list, via the configured resolver chain
  *   6. clasp deploy        — update the named deployment in place; never create one
- *   7. postDeploy hooks    — in declared order
- *   8. assertDeployedVersion — mandatory, non-skippable (§3.2)
+ *   6a. readiness poll     — assertDeployedVersion until the NEW version serves (GAS-Core-o8v).
+ *                            A timeout fails the deploy and NO postDeploy hook runs: a hook
+ *                            that calls the webapp in the settling window gets Google's HTML
+ *                            page instead of the app's JSON.
+ *   7. postDeploy hooks    — in declared order, only once 6a has confirmed the new version
+ *   8. assertDeployedVersion — mandatory, non-skippable (§3.2); runs again AFTER the hooks
+ *                            because hooks can change Script Properties
  *   9. printDeploySummary  — mandatory final step (§3.1)
  */
 
@@ -224,7 +229,22 @@ async function deploy(config, targetKey, options = {}) {
   }
 
   const hookCtx = { targetKey, target, label, version, now, deploymentId, revision, scriptId, settings, root, env: ctx.env };
-  await runPostDeploy_(config.postDeploy || [], hookCtx, { log, errorLog });
+  const summaryRows = (config.extraRows || (() => []))(hookCtx);
+
+  // Step 6a. The deployment was just updated, but the /exec URL answers with Google's HTML page
+  // (or the previous version) for a while. A hook that calls the webapp inside that window gets
+  // garbage and, if it is optional, silently skips its work (GAS-Core-o8v). So no hook runs until
+  // the new version is confirmed serving. A timeout fails the deploy with no hook run.
+  let verifyError = null;
+  log(`\n⏳ Waiting for ${label} to serve v${version} before post-deploy hooks…`);
+  try {
+    await assertDeployedVersion(deploymentId, version, label, { log, ...(config.verifyOptions || {}) });
+    log(`✅ ${label} is serving v${version} — post-deploy hooks may run`);
+  } catch (err) {
+    verifyError = err;
+    log(`⛔ ${label} never served v${version} — no post-deploy hook was run`);
+  }
+  if (!verifyError) await runPostDeploy_(config.postDeploy || [], hookCtx, { log, errorLog });
 
   // The default record shape is the package's. A project whose ledger already has downstream
   // readers (GActionSheet's write-environment.py and pipeline report read `timestamp`/`version`/
@@ -237,10 +257,10 @@ async function deploy(config, targetKey, options = {}) {
     { log, stamp: !config.deployMetadata });
 
   // Mandatory, non-skippable (§3.2). There is deliberately no option to turn this off.
-  log(`\n🔍 Verifying ${label} is actually serving v${version}…`);
-  const summaryRows = (config.extraRows || (() => []))(hookCtx);
   let verified;
   try {
+    if (verifyError) throw verifyError;
+    log(`\n🔍 Verifying ${label} is actually serving v${version}…`);
     verified = await assertDeployedVersion(deploymentId, version, label, { log, ...(config.verifyOptions || {}) });
     log(`✅ ${label} verified — serving v${verified.version} (target ${verified.target})`);
   } catch (err) {

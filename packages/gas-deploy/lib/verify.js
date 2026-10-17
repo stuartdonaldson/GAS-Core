@@ -33,8 +33,11 @@ function sleep_(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); 
  * answered.
  *
  * Polls rather than checking once for the same reason execWithRetry exists: the ~5s
- * edge-propagation race (#9). Everything is injected (postFn/sleep/log) so match, mismatch and
- * timeout are all unit-testable with no network call and no wall-clock wait.
+ * edge-propagation race (#9). Everything is injected (transport/sleep/log) so match, mismatch and
+ * timeout are all unit-testable with no network call and no wall-clock wait. `transport` is a
+ * unit-test seam, NOT a consumer config surface: the 1.x `postFn` transport override (a signed-in
+ * session POST for access:ANYONE webapps) was retired in 2.0.0 (GAS-Core-e5z) and nothing in the
+ * package documents or relies on replacing the transport.
  *
  * **Settling (`settleReads`, default 2).** A single agreeing read is not proof the fleet has
  * turned over. Three PracticeMix stages independently watched `cmd=version` answer with the new
@@ -45,7 +48,7 @@ function sleep_(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); 
  */
 async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarget, options = {}) {
   const {
-    postFn = post, intervalSec = 5, timeoutSec = 120, settleReads = 2, sleep = sleep_, log = () => {},
+    transport = post, intervalSec = 5, timeoutSec = 120, settleReads = 2, sleep = sleep_, log = () => {},
   } = options;
   const url = execUrl(deploymentId, 'version');
   const startedAt = Date.now();
@@ -57,7 +60,7 @@ async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarg
   for (;;) {
     attempt++;
     try {
-      lastResult = await postFn(url, { action: 'version' });
+      lastResult = await transport(url, { action: 'version' });
     } catch (err) {
       log(`  attempt ${attempt}: request failed (${err.message})`);
       lastResult = null;
@@ -114,9 +117,9 @@ async function assertDeployedVersion(deploymentId, expectedVersion, expectedTarg
  * consumer's first adoption goes.
  */
 async function queryLiveVersion(deploymentId, options = {}) {
-  const { postFn = post } = options;
+  const { transport = post } = options;
   try {
-    const result = await postFn(execUrl(deploymentId, 'version'), { action: 'version' });
+    const result = await transport(execUrl(deploymentId, 'version'), { action: 'version' });
     if (result && result.ok) return { version: result.version, target: result.target };
   } catch {
     // fall through
@@ -126,9 +129,9 @@ async function queryLiveVersion(deploymentId, options = {}) {
 
 /** Generic post-deploy reachability check (#8) — for projects with no cmd=version route yet. */
 async function pingWebapp(deploymentId, options = {}) {
-  const { postFn = post, cmd = 'version' } = options;
+  const { transport = post, cmd = 'version' } = options;
   try {
-    const result = await postFn(execUrl(deploymentId, cmd), { action: 'ping' });
+    const result = await transport(execUrl(deploymentId, cmd), { action: 'ping' });
     return { reachable: true, jsonResponse: typeof result === 'object', result };
   } catch (err) {
     return { reachable: false, error: err.message };

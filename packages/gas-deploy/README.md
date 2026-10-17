@@ -232,6 +232,20 @@ A project with no anchors today migrates for free: `describeDeployment` rewrites
 as `${anchor} v${version}` on **every** deploy, so the next deploy resolves via the cached ID,
 writes the anchored description, and anchor matching works from then on. No flag day.
 
+### `target` vs `env` in `BUILD_INFO`
+
+Two different fields, two different jobs:
+
+- **`target`** is the **deploy contract**: the label (`TEST`, `PRODUCTION`). `assertDeployedVersion`
+  compares it against `cmd=version`, and gas-static's env-agreement guard reads it. Never lowercased,
+  never remapped.
+- **`env`** is the **logging/query discriminator**, in the vocabulary `dev|test|prod`
+  (`best-practices/gas-server-logging/README.md` Standing Rule 3; `query_axiom.py --env` filters on
+  it). `buildInfoStamper` stamps it by default from the label: `TEST` -> `test`, `PRODUCTION` -> `prod`,
+  `DEV` -> `dev`; any other label stamps `label.toLowerCase()`. Override or extend with
+  `envMap: { SIT: 'test', PROD: 'prod' }`; rename the key with `fields: { env: 'logEnv' }`; a field
+  named `env` in `extraFields` still wins. GasLogger needs no mapping: it only reads `BUILD_INFO.env`.
+
 ### Project-specific summary rows
 
 `extraRows` is a `(ctx) => rows` function, called for the summary on both the success and the
@@ -256,12 +270,12 @@ actually happened. See its README §"Chaining off a deploy".
 | `root` | Absolute project root. Everything else is relative to it. |
 | `settingsPath` / `pkgPath` / `claspPath` | Defaults: `local.settings.json`, `package.json`, `.clasp.json`. |
 | `rootDir` | `rootDir` written into `.clasp.json`. Default `script`. |
-| `stamper` | `constStamper({file})` or `buildInfoStamper({file, fields, extraFields})`. `fields` renames the standard keys (a GAS runtime reads them by name); `extraFields` may be a function of the stamp context, for a project field that varies per target. |
+| `stamper` | `constStamper({file})` or `buildInfoStamper({file, fields, extraFields, envMap})`. `fields` renames the standard keys, `env` included (a GAS runtime reads them by name); `extraFields` may be a function of the stamp context, for a project field that varies per target, and wins over the default `env`; `envMap` overrides the label to `env` mapping, see the `target` vs `env` section. |
 | `targets` | Per-env config, see below. |
 | `envAliases` | Public env name → internal target key, e.g. `{ sit: 'test', prod: 'template' }`. |
 | `resolveDeployment` | Resolver chain. Default `standardChain(target.anchor)`. |
 | `prePush` | Ordered hooks that run after the stamp and **before** the push, for source that must be part of it. Default `required: true` — nothing is live yet, so stopping is free. |
-| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. |
+| `postDeploy` | Ordered `[{ name, run, required, retryCommand }]`. `required: false` (default) ⇒ a throw warns and prints `retryCommand`; the deploy still succeeds, because the code is already live. Hooks run only after a readiness poll has confirmed the new version is serving — see §Deploy verification. |
 | `describeDeployment` | `(version, label, target) => string` for the `clasp deploy --description`. **Must contain `target.anchor`** — see §Deployment description & the anchor. |
 | `extraRows` | `(ctx) => [{ label, value, missing }]` — project-specific summary rows. See §Project-specific summary rows. |
 | `readLocalVersion` | `(ctx) => string \| {version, now}` — lets `--summary` flag live-vs-local divergence and print the stamp time. Reading the stamped file is deliberately the consumer`s job: the package itself never reads back what it stamped. |
@@ -285,12 +299,28 @@ a completely separate Google account.
 
 | key | meaning |
 |---|---|
-| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. |
-| `authField` | Body field the secret goes in: `adminSecret`, `testToken`, `secret`, … |
-| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
-| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
+| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. **`secretKey` is the admin declaration:** an env that sets it declares an admin secret, and a missing value in `local.settings.json` is a named config error before any request (see §Admin secret). |
+| `admin` | `{ secretProperty, authField }`. Defaults `ADMIN_SHARED_SECRET` / `adminSecret`; both pluggable (GActionSheet: `{ secretProperty: 'WEBAPP_SECRET', authField: 'testToken' }`). `secretProperty` is the server-side Script Property, used in the error message; `authField` is the body field the secret goes in. |
+| `authField` | 1.x spelling of `admin.authField`, still accepted. |
+| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret, and never require one. |
+| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them **except `cmd=version`**, which is never secured. |
 | `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
-| `postFn` | Opt-in transport override, passed through to `lib/webapp.js`'s `call()`. For a consumer whose webapp cannot answer a bare `lib/webapp.js` POST — PracticeMix is deployed `access:ANYONE` (not `ANYONE_ANONYMOUS`) and only answers a POST carrying a signed-in Google session, so its wrapper supplies a `postFn` that replays a captured Playwright session's cookies. Omit for the common case. |
+
+### Admin secret
+
+The admin option is a *declaration* and lives in the project's JS config module (the `envMap` /
+`admin` keys above), not in `gas-project.json` (adr/0004). The secret *value* stays in the gitignored
+`local.settings.json`. `call-webapp` checks, before any request (before `clasp deployments` too):
+
+- an env with `secretKey` whose value is missing, empty or a `<placeholder>` throws
+  `Env "<env>" declares an admin secret … but local.settings.json has no <secretKey>`, naming the
+  key, the file, the auth field and the server Script Property — it does not send an unauthenticated
+  call that returns `forbidden`;
+- the check is skipped for calls that never carry the secret: `cmd=version`, a `--cmd` outside
+  `securedCmds`, and any action in `ungatedActions` (`bootstrapSecret` runs before a secret exists).
+
+`cmd=version` is unconditionally ungated by the package: it never carries the secret, whatever
+`securedCmds` says or omits, because deploy verification depends on it answering before bootstrap.
 
 ## Deployment-ID resolution
 
@@ -333,6 +363,21 @@ was measured at ~1 min for a code change and ~90 s for a manifest change, and mi
 
 The route itself is per-project GAS code (only the project knows where its stamper wrote); the
 package owns the Node side.
+
+### Order: readiness poll, hooks, final assert
+
+`assertDeployedVersion` runs **twice** per deploy, with the `postDeploy` hooks between the two:
+
+1. **Readiness poll** — right after `clasp deploy`, before any hook. Immediately after a deploy the
+   `/exec` URL can answer with Google's HTML page, or the previous version, for minutes; a hook that
+   calls the webapp in that window gets garbage (a `bootstrapSecret` hook once skipped its work on
+   exactly this). No hook runs until the new version and target are confirmed serving.
+   **If this poll times out the deploy fails and no hook runs.**
+2. **`postDeploy` hooks**, in declared order.
+3. **Final assert** — unchanged, mandatory, non-skippable. It repeats the check after the hooks
+   because a hook can change Script Properties.
+
+Both polls use the same `verifyOptions`, so a deploy costs at least one extra settle interval.
 
 ## Invariants
 

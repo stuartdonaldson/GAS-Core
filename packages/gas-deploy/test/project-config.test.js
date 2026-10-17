@@ -70,7 +70,7 @@ function baseConfig(dir, overrides = {}) {
       exec: fakeExec(),
       stamper: constStamper({ file: 'script/version.js' }),
       verifyOptions: {
-        postFn: async () => ({ ok: true, version: '0.1.6.5', target: 'SIT' }),
+        transport: async () => ({ ok: true, version: '0.1.6.5', target: 'SIT' }),
         sleep: async () => {},
       },
       targets: {
@@ -223,7 +223,7 @@ test('--summary resolves project truth the same way the deploy path does', async
     project: { envs: { sit: { scriptId: 'S-FROM-PROJECT', sheetId: 'SHEET-FROM-PROJECT' } } },
   }, async (dir) => {
     const { config, logs } = baseConfig(dir, {
-      verifyOptions: { postFn: async () => null, sleep: async () => {} },
+      verifyOptions: { transport: async () => null, sleep: async () => {} },
     });
     await summary(config, 'sit');
     assert.ok(logs.some((l) => l.includes('SHEET-FROM-PROJECT')),

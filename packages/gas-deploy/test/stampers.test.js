@@ -61,7 +61,7 @@ test('buildInfoStamper rewrites the whole BUILD_INFO object literal', () => {
 
     const src = fs.readFileSync(path.join(root, 'Version.js'), 'utf8');
     const literal = JSON.parse(src.match(/const BUILD_INFO = (\{[\s\S]*?\n\});/)[1]);
-    assert.deepEqual(literal, { version: '2.0.0', date: 'NOW', target: 'PROD', webAppUrl: 'https://x/exec' });
+    assert.deepEqual(literal, { version: '2.0.0', date: 'NOW', target: 'PROD', env: 'prod', webAppUrl: 'https://x/exec' });
     assert.match(src, /function other_/, 'the rest of the file survives');
   });
 });
@@ -123,4 +123,47 @@ test('bump helpers are idempotent across calls and leave the other counter alone
 test('replaceConst rewrites in place, appends when missing', () => {
   assert.match(replaceConst("const A = '1';\n", 'A', "'2'"), /const A = '2';/);
   assert.match(replaceConst("const A = '1';\n", 'B', "'x'"), /const B\s+= 'x';/);
+});
+
+// -- GAS-Core-3v2: `target` is the deploy contract, `env` the logging discriminator --------------
+
+function stampedLiteral(opts, label) {
+  let literal;
+  withTempDir((root) => {
+    fs.writeFileSync(path.join(root, 'V.js'), 'const BUILD_INFO = {\n  "version": "0"\n};\n', 'utf8');
+    buildInfoStamper({ file: 'V.js', ...opts })({ root, label, version: '1.0.0', now: 'NOW', log: () => {} });
+    literal = JSON.parse(fs.readFileSync(path.join(root, 'V.js'), 'utf8').match(/BUILD_INFO = (\{[\s\S]*?\n\});/)[1]);
+  });
+  return literal;
+}
+
+test('buildInfoStamper stamps a lowercase env (dev|test|prod) derived from the label; target stays the label', () => {
+  for (const [label, env] of [['TEST', 'test'], ['PRODUCTION', 'prod'], ['DEV', 'dev']]) {
+    const lit = stampedLiteral({}, label);
+    assert.equal(lit.env, env, `${label} -> ${env}`);
+    assert.equal(lit.target, label, 'target is the untouched deploy contract');
+  }
+});
+
+test('buildInfoStamper: an unmapped label stamps label.toLowerCase()', () => {
+  assert.equal(stampedLiteral({}, 'STAGING').env, 'staging');
+  assert.equal(stampedLiteral({}, 'SIT').env, 'sit');
+});
+
+test('buildInfoStamper: envMap overrides and extends the default mapping', () => {
+  const envMap = { SIT: 'test', PROD: 'prod', PRODUCTION: 'production' };
+  assert.equal(stampedLiteral({ envMap }, 'SIT').env, 'test', 'extends');
+  assert.equal(stampedLiteral({ envMap }, 'PRODUCTION').env, 'production', 'overrides a default');
+  assert.equal(stampedLiteral({ envMap }, 'TEST').env, 'test', 'unlisted defaults survive');
+});
+
+test('buildInfoStamper: extraFields still wins over the default env', () => {
+  assert.equal(stampedLiteral({ extraFields: { env: 'custom' } }, 'TEST').env, 'custom');
+  assert.equal(stampedLiteral({ extraFields: () => ({ env: 'fn' }) }, 'PRODUCTION').env, 'fn');
+});
+
+test('buildInfoStamper: fields.env renames the env key', () => {
+  const lit = stampedLiteral({ fields: { env: 'logEnv' } }, 'PRODUCTION');
+  assert.equal(lit.logEnv, 'prod');
+  assert.equal('env' in lit, false, 'the default key name is gone once renamed');
 });

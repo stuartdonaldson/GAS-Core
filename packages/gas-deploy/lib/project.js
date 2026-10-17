@@ -31,6 +31,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PROJECT_FILE = 'gas-project.json';
+const { UNGATED_CMDS } = require('./webapp.js');
 
 /**
  * Reads the committed project-truth file. Returns null when the project has none — that is the
@@ -128,8 +129,35 @@ function assertSecretsPresent_(project, targetKey, target, settings) {
   );
 }
 
+/**
+ * The admin-secret twin of assertSecretsPresent_ (GAS-Core-8w0): an env that DECLARES an admin
+ * secret (`envMap.<env>.secretKey`, in the project's JS config module — a declaration, so it is
+ * not in gas-project.json, adr/0004) whose value is absent from the gitignored local.settings.json
+ * must fail by name before the request. Otherwise the call goes out unauthenticated and comes
+ * back `forbidden`, with no hint that the cause is a missing key.
+ *
+ * Nothing is required for a call that never carries the secret: `cmd=version`, a cmd outside
+ * `securedCmds`, or an action in `ungatedActions` (bootstrapSecret must run with no secret yet).
+ */
+function assertAdminSecretPresent_(admin, envKey, target, settings, { cmd, action, securedCmds, ungatedActions = [] } = {}) {
+  const secretKey = target && target.secretKey;
+  if (!secretKey) return;
+  if (UNGATED_CMDS.includes(cmd) || ungatedActions.includes(action)) return;
+  if (securedCmds && !securedCmds.includes(cmd)) return;
+  const value = settings[secretKey];
+  if (value && !String(value).startsWith('<')) return;
+  throw new Error(
+    `Env "${envKey}" declares an admin secret (envMap.${envKey}.secretKey = "${secretKey}"), but ` +
+    `local.settings.json has no ${secretKey}. The declaration names the secret; the gitignored ` +
+    `half must supply it — without ${secretKey}, ${action || 'the call'} on cmd=${cmd} would go out ` +
+    `unauthenticated (no "${admin.authField}" field) and come back "forbidden", not by name. ` +
+    `No request was made. The server-side gate reads Script Property ${admin.secretProperty}.`
+  );
+}
+
 module.exports = {
   PROJECT_FILE,
+  assertAdminSecretPresent_,
   loadProjectConfig,
   assertEnvDeclared_,
   assertSecretsPresent_,

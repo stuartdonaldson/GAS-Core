@@ -1,5 +1,64 @@
 # Changelog — gas-deploy
 
+## 2.0.0
+
+Breaking: the `postFn` transport override is removed, and a declared admin secret that is missing
+now errors. Test count 96 -> 113.
+
+- **postDeploy hooks wait for the new version (GAS-Core-o8v).** `deploy()` now polls
+  `assertDeployedVersion` right after `clasp deploy` and before any hook. If that readiness poll
+  times out the deploy fails (`ok: false`, exit code 1, summary printed) and **no hook runs**. The
+  mandatory final assert still runs after the hooks, unchanged, because hooks can change Script
+  Properties. Both polls use `verifyOptions`, so a deploy takes at least one extra settle interval.
+  The ledger entry is still written on a readiness failure, as it was on a final-assert failure.
+- **`postFn` removed (GAS-Core-e5z).** Gone from `bin/call-webapp.js` config and from
+  `lib/webapp.js` `call()` (a passed `postFn` is ignored). Its only consumer, PracticeMix, is
+  `ANYONE_ANONYMOUS` and passes none. In `lib/verify.js` the injection point is renamed `transport`
+  and is a unit-test seam, not documented config.
+- **The admin secret is a declared option (GAS-Core-8w0).**
+  - An env with `envMap.<env>.secretKey` whose value is missing, empty or a `<placeholder>` in
+    `local.settings.json` throws `Env "<env>" declares an admin secret … but local.settings.json has
+    no <secretKey>` **before any request** (before `clasp deployments` too). Not raised for
+    `cmd=version`, a `--cmd` outside `securedCmds`, or an action in `ungatedActions`.
+  - `cmd=version` is unconditionally ungated: never carries the secret, whatever `securedCmds` says.
+  - New `admin: { secretProperty, authField }` config, default `ADMIN_SHARED_SECRET` / `adminSecret`,
+    both pluggable. The 1.x top-level `authField` is still accepted. The declaration stays in the
+    project's JS config module, not `gas-project.json` (adr/0004).
+- **`buildInfoStamper` stamps `env` (GAS-Core-3v2).** A lowercase logging discriminator derived from
+  the label: `TEST`->`test`, `PRODUCTION`->`prod`, `DEV`->`dev`, any other label ->
+  `label.toLowerCase()`. New `envMap` option overrides/extends the mapping; `fields: { env: 'x' }`
+  renames the key; `extraFields` still wins. `target` is unchanged (the deploy contract).
+
+### Migrating from 1.x
+
+1. **`postFn` (call-webapp config).** Delete `postFn` from the config passed to
+   `bin/call-webapp.js` `run()`. Delete any `postFn` passed to `lib/webapp.js` `call()`. It was
+   only for `access:ANYONE` webapps; deploy the webapp `ANYONE_ANONYMOUS` instead. The option is now
+   silently ignored, so a leftover one sends a bare POST.
+2. **`verifyOptions.postFn`.** Rename to `verifyOptions.transport` only if a test injects a fake
+   version source. Production configs should not set it. `assertDeployedVersion`,
+   `queryLiveVersion` and `pingWebapp` options take `transport`, not `postFn`.
+3. **Declared secret must exist.** For every `envMap.<env>.secretKey` in your call-webapp config,
+   `local.settings.json` must contain that key with a real value. Otherwise
+   `call-webapp <action> --env <env>` now fails with `Env "<env>" declares an admin secret`. If an
+   env has no secret, delete its `secretKey`. Calls with `--cmd version`, a `--cmd` not in
+   `securedCmds`, or an action in `ungatedActions` (e.g. `bootstrapSecret`) are exempt.
+4. **`cmd=version` no longer carries the secret.** If a project relied on `adminSecret` being
+   attached to `--cmd version` (RankChoiceVoting omitted `securedCmds`), the server's version route
+   must answer without it. It already must for deploy verification.
+5. **Plug a non-default gate in via `admin`.** GActionSheet: `admin: { secretProperty:
+   'WEBAPP_SECRET', authField: 'testToken' }` (its top-level `authField: 'testToken'` keeps working
+   too). Projects on `ADMIN_SHARED_SECRET` / `adminSecret` need nothing.
+6. **postDeploy hooks now run after readiness.** Remove any retry or sleep a hook added to survive
+   the settling window, and expect one extra settle interval per deploy. A deploy whose new version
+   never serves now fails before running hooks; re-run the hooks by hand (`retryCommand`) after it
+   settles.
+7. **`BUILD_INFO` gains an `env` key.** `buildInfoStamper` output now includes
+   `"env": "test" | "prod" | "dev"` (or `label.toLowerCase()`). A project that already sets `env` in
+   `extraFields` is unaffected. Others: drop hand-rolled env maps and any `axiomEnv` shim; pass
+   `envMap` only for labels outside TEST/PRODUCTION/DEV. If the runtime has a field that collides
+   with `env`, rename it with `fields: { env: '<name>' }`.
+
 ## 1.4.1
 
 - **`assertDeployedVersion` default `timeoutSec` doubled, 60 → 120.** Real deploys were observed

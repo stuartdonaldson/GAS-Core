@@ -23,7 +23,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const { call, redact } = require('../lib/webapp.js');
+const { call, redact, resolveAdmin, UNGATED_CMDS } = require('../lib/webapp.js');
+const { assertAdminSecretPresent_ } = require('../lib/project.js');
 const { claspEnv } = require('../lib/clasp.js');
 const { resolveDeploymentId, standardChain } = require('../lib/resolvers.js');
 
@@ -101,6 +102,13 @@ async function run(config, argv = process.argv) {
   const envKey = normalizeEnv(env, config.envMap);
   const target = config.envMap[envKey];
 
+  // Before anything touches the network (including `clasp deployments`): a declared admin secret
+  // that local.settings.json does not carry is a config error, not an unauthenticated request.
+  const admin = resolveAdmin(config);
+  assertAdminSecretPresent_(admin, envKey, target, settings, {
+    cmd, action, securedCmds: config.securedCmds, ungatedActions: config.ungatedActions || [],
+  });
+
   const deploymentId = resolveEnvDeploymentId(config, envKey, settings, { exec: config.exec });
 
   // `securedCmds` scopes the secret to the endpoints that actually gate on it. F3Go30 has
@@ -108,7 +116,8 @@ async function run(config, argv = process.argv) {
   // the admin secret to an ungated endpoint would widen its exposure for no reason. Omit it and
   // every cmd is treated as secret-carrying, which is the right default for a single-endpoint
   // project like RankChoiceVoting.
-  const cmdIsSecured = !config.securedCmds || config.securedCmds.includes(cmd);
+  // `cmd=version` is never secured, whatever `securedCmds` says (GAS-Core-8w0).
+  const cmdIsSecured = !UNGATED_CMDS.includes(cmd) && (!config.securedCmds || config.securedCmds.includes(cmd));
   const secret = cmdIsSecured && target.secretKey ? settings[target.secretKey] : undefined;
 
   // stderr, so piping stdout to jq still works. Never includes the payload's secret.
@@ -119,13 +128,8 @@ async function run(config, argv = process.argv) {
     action,
     extraBody,
     secret,
-    authField: config.authField || 'adminSecret',
+    authField: admin.authField,
     ungatedActions: config.ungatedActions || [],
-    // Opt-in transport override for a consumer whose webapp requires something other than a
-    // bare POST — PracticeMix's is deployed access:ANYONE (not ANYONE_ANONYMOUS) and answers
-    // only to a POST carrying a signed-in Google session, so it supplies a postFn that replays
-    // a captured Playwright session's cookies instead of using lib/webapp.js's raw https POST.
-    ...(config.postFn ? { postFn: config.postFn } : {}),
   });
 
   console.log(JSON.stringify(result, null, 2));
