@@ -285,11 +285,28 @@ a completely separate Google account.
 
 | key | meaning |
 |---|---|
-| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. |
-| `authField` | Body field the secret goes in: `adminSecret`, `testToken`, `secret`, … |
-| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret. |
-| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them. |
+| `envMap` | env → `{ deploymentIdKey, secretKey, scriptIdKey, authKey, anchor }`. `sit`/`test` and `prod`/`production` are accepted as synonyms. **`secretKey` is the admin declaration:** an env that sets it declares an admin secret, and a missing value in `local.settings.json` is a named config error before any request (see §Admin secret). |
+| `admin` | `{ secretProperty, authField }`. Defaults `ADMIN_SHARED_SECRET` / `adminSecret`; both pluggable (GActionSheet: `{ secretProperty: 'WEBAPP_SECRET', authField: 'testToken' }`). `secretProperty` is the server-side Script Property, used in the error message; `authField` is the body field the secret goes in. |
+| `authField` | 1.x spelling of `admin.authField`, still accepted. |
+| `ungatedActions` | Actions the server answers *before* its secret gate — never send one a secret, and never require one. |
+| `securedCmds` | Which `--cmd` endpoints are secret-gated. Omit ⇒ all of them **except `cmd=version`**, which is never secured. |
 | `resolveFromLiveList` | `false` to use the recorded deploymentId instead of a `clasp deployments` round trip. |
+
+### Admin secret
+
+The admin option is a *declaration* and lives in the project's JS config module (the `envMap` /
+`admin` keys above), not in `gas-project.json` (adr/0004). The secret *value* stays in the gitignored
+`local.settings.json`. `call-webapp` checks, before any request (before `clasp deployments` too):
+
+- an env with `secretKey` whose value is missing, empty or a `<placeholder>` throws
+  `Env "<env>" declares an admin secret … but local.settings.json has no <secretKey>`, naming the
+  key, the file, the auth field and the server Script Property — it does not send an unauthenticated
+  call that returns `forbidden`;
+- the check is skipped for calls that never carry the secret: `cmd=version`, a `--cmd` outside
+  `securedCmds`, and any action in `ungatedActions` (`bootstrapSecret` runs before a secret exists).
+
+`cmd=version` is unconditionally ungated by the package: it never carries the secret, whatever
+`securedCmds` says or omits, because deploy verification depends on it answering before bootstrap.
 
 ## Deployment-ID resolution
 

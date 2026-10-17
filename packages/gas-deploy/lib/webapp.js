@@ -26,6 +26,31 @@ const https = require('https');
 
 const DEFAULT_TIMEOUT_MS = 120000;
 
+/**
+ * The declared default admin gate (GAS-Core-8w0). `secretProperty` is the server-side Script
+ * Property that holds the secret; `authField` is the POST body field it travels in. Both are
+ * pluggable per project (`config.admin`), because GActionSheet's gate is WEBAPP_SECRET/testToken.
+ * Most projects never override either, which is the point of declaring a default.
+ */
+const DEFAULT_ADMIN = Object.freeze({ secretProperty: 'ADMIN_SHARED_SECRET', authField: 'adminSecret' });
+
+/**
+ * Endpoints that never carry a secret, whatever the project declares. `cmd=version` must answer
+ * before any secret is bootstrapped and on an ANYONE_ANONYMOUS deployment, because deploy
+ * verification depends on it. This used to be per-project memory (omit it from `securedCmds`),
+ * and RankChoiceVoting forgot: its client attached adminSecret to cmd=version.
+ */
+const UNGATED_CMDS = Object.freeze(['version']);
+
+function resolveAdmin(config = {}) {
+  const declared = config.admin || {};
+  return {
+    secretProperty: declared.secretProperty || DEFAULT_ADMIN.secretProperty,
+    // `config.authField` is the 1.x spelling and stays accepted.
+    authField: declared.authField || config.authField || DEFAULT_ADMIN.authField,
+  };
+}
+
 function collectBody_(res) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -99,9 +124,9 @@ function execUrl(deploymentId, cmd) {
  * the server answers *before* its secret gate — bootstrapping the secret, and stamping the
  * deployment's own URL — which must never carry a secret we may not have yet.
  */
-function buildPayload({ action, extraBody = {}, secret, authField = 'adminSecret', ungatedActions = [] }) {
+function buildPayload({ action, extraBody = {}, secret, authField = DEFAULT_ADMIN.authField, ungatedActions = [], cmd }) {
   const ungated = new Set(ungatedActions);
-  if (!authField || ungated.has(action) || !secret) return { action, ...extraBody };
+  if (!authField || UNGATED_CMDS.includes(cmd) || ungated.has(action) || !secret) return { action, ...extraBody };
   return { action, [authField]: secret, ...extraBody };
 }
 
@@ -110,7 +135,7 @@ function buildPayload({ action, extraBody = {}, secret, authField = 'adminSecret
  * passing it through here — a failure path that dumps the request is the classic way a secret
  * ends up in a CI log.
  */
-function redact(payload, authField = 'adminSecret') {
+function redact(payload, authField = DEFAULT_ADMIN.authField) {
   const out = { ...payload };
   for (const key of Object.keys(out)) {
     if (key === authField || /secret|token|password|key$/i.test(key)) out[key] = '<redacted>';
@@ -124,7 +149,7 @@ function redact(payload, authField = 'adminSecret') {
  */
 async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, authField, ungatedActions, timeoutMs } = {}) {
   const url = execUrl(deploymentId, cmd);
-  const payload = buildPayload({ action, extraBody, secret, authField, ungatedActions });
+  const payload = buildPayload({ action, extraBody, secret, authField, ungatedActions, cmd });
   const result = await post(url, payload, { timeoutMs });
 
   if (typeof result === 'string') {
@@ -136,4 +161,4 @@ async function call(deploymentId, { cmd = 'admin', action, extraBody, secret, au
   return result;
 }
 
-module.exports = { post, get, execUrl, buildPayload, redact, call };
+module.exports = { post, get, execUrl, buildPayload, redact, call, DEFAULT_ADMIN, UNGATED_CMDS, resolveAdmin };
