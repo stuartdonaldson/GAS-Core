@@ -142,8 +142,26 @@ triggers such as `onEdit`/`onActionSheetEdit`. Consequences for tests:
 
 ## Trade-offs
 
-- **No mocking of Google APIs.** Platform behaviour and quotas shift silently; mocks diverge from
-  production. These tests hit live Drive/Docs/Sheets — slower, but real.
+- **Schema-checked fakes for request shape and handler logic; live tests for what only the
+  platform can show.** (Revised 2026-10-24, owner; the earlier rule was "No mocking of Google
+  APIs".) Platform behaviour and quotas shift silently, and ad-hoc mocks diverge from production,
+  so unchecked mocks stay prohibited. A *schema-checked* fake is different: it runs the real
+  handler code in memory against a model of Docs/Drive/Sheets/Properties/Cache whose every request
+  is validated against Google's discovery documents, so a malformed request fails locally.
+  - **Local (fakes):** handler logic, request shape, state transitions, fault injection (HTTP
+    errors, lost responses, quota), many scenarios per second, no deploy.
+  - **Live:** auth, Script Properties, Drive ACLs, triggers, add-on surfaces, and **one canary per
+    API request type** (so a fake that drifts from the real API is caught by a real call), plus
+    batched end-to-end journeys.
+  - **Fidelity rule:** where the fake models a behaviour the real API is not known to have, mark
+    it UNVERIFIED and give it a live canary or a batched-journey comparison; the fake never
+    becomes the authority on platform behaviour.
+  - **Why:** a suite that exercised every handler case against live Google took hours per
+    release (one document per test, deploy plus six-minute-ceiling constraints), and most red runs
+    were test or fixture faults, not product faults. Moving handler logic local cuts the release
+    gate to minutes while the canaries keep the platform in the loop. The adapter-level
+    consequence for entry-point coverage (`T17`) is that the call-site stays the entry point
+    itself, driven through the fake's loopback, not the mechanism it delegates to.
 - **Deploy discipline is mandatory.** The versioned Web App deployment must be redeployed after
   every script change, or the suite calls a stale revision and fails with non-JSON / wrong-version
   responses. See `gas-deployment` and `gas-cm-and-deployment`. (A `/dev` HEAD URL avoids per-change
