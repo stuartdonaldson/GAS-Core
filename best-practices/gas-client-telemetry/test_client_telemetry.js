@@ -195,6 +195,26 @@ describe('flush', () => {
     assert.equal(r.beacons[0][0], 'id13');
     assert.equal(r.ids().length, 12);
   });
+
+  test('review: flushOnHide beacons each record id at most once per page session; a failed beacon is retried', () => {
+    const r = rig();
+    r.tel.capture('error', 'a', {});
+    r.tel.capture('error', 'b', {});
+    assert.equal(r.tel.flushOnHide(), true);
+    assert.equal(r.beacons[0].length, 2);
+    r.tel.flushOnHide();                              // pagehide right after visibilitychange hidden
+    assert.equal(r.beacons.length, 1, 'nothing new to beacon');
+    r.tel.capture('error', 'c', {});
+    r.tel.flushOnHide();
+    assert.equal(r.beacons[1].length, 1, 'only the new record');
+    assert.equal(r.ids().length, 3, 'still never dequeues');
+    r.beaconResult = false;
+    r.tel.capture('error', 'd', {});
+    r.tel.flushOnHide();
+    r.beaconResult = true;
+    r.tel.flushOnHide();
+    assert.equal(r.beacons[r.beacons.length - 1].length, 1, 'failed beacon did not mark the id');
+  });
 });
 
 describe('installGlobalHandlers', () => {

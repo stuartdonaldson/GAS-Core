@@ -15,8 +15,8 @@
  * 2048 bytes onto an ordinary request; the server logs them and answers with telemetryAck: [ids];
  * settle() dequeues exactly those ids. A transport failure (release) or a response without
  * telemetryAck dequeues nothing. flush() is the background path: a dedicated send() of <=10
- * records, backed off 30/60/120/300 s, reset by any ack. flushOnHide() uses a beacon, which has no
- * response and therefore never dequeues. Nothing in this module throws, and a failed flush never
+ * records, backed off 30/60/120/300 s, reset by any ack. flushOnHide() uses a beacon (each record id at most
+ * once per page session), which has no response and therefore never dequeues. Nothing in this module throws, and a failed flush never
  * captures a record (that would feed itself).
  *
  * deps: storage {getItem,setItem}|null, key, now()->ms, newId()->string, setTimeout, clearTimeout,
@@ -44,6 +44,7 @@ function createClientTelemetry(deps) {
   var lastCarriedAt = 0;
   var timer = null;
   var flushing = false;
+  var beaconed = {};            // id -> true once beaconed this page session (a beacon never dequeues)
 
   function safe_(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
   function nowMs_() { return safe_(function () { return deps.now(); }, Date.now()); }
@@ -217,12 +218,15 @@ function createClientTelemetry(deps) {
       try { return doFlush_().then(function () {}, function () {}); } catch (e) { return Promise.resolve(); }
     },
 
-    /** Page hidden/unloading: beacon the newest <=10 records. A beacon has no response, so nothing is dequeued. */
+    /** Page hidden/unloading: beacon the newest <=10 records not yet beaconed this page session. A beacon has no response, so nothing is dequeued. */
     flushOnHide: function () {
       try {
-        var batch = load_().slice(-TELEMETRY_FLUSH_BATCH_MAX_).reverse();
+        var batch = load_().filter(function (r) { return !beaconed[r.id]; }).slice(-TELEMETRY_FLUSH_BATCH_MAX_).reverse();
         if (!batch.length) return false;
-        if (typeof deps.beacon === 'function' && deps.beacon(batch)) return true;
+        if (typeof deps.beacon === 'function' && deps.beacon(batch)) {
+          batch.forEach(function (r) { beaconed[r.id] = true; });
+          return true;
+        }
         api.flush();
         return false;
       } catch (e) { return false; }

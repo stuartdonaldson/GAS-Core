@@ -15,7 +15,9 @@
  * 'client.unknown'). Dedupe is by the client-minted record id, 6h, so a client that re-sends before
  * it sees an ack does not double-log. Every logged or already-seen id is acked; the client dequeues
  * exactly those. A key GasLogger stamps itself (version, env, op, parentOp, ts, tag) would be
- * overwritten or collide on the Axiom row, so it is renamed client_<key>.
+ * overwritten or collide on the Axiom row, so it is renamed client_<key>. Client-supplied who keys
+ * (email, sub, visitor, anon, ip) are stripped, and each record is clipped (msg 500, stack 1200, other
+ * strings 500, 40 keys).
  *
  * The caller owns identity: pass the who-fields (visitor, ip, email...) as `context`; they are
  * stamped on every logged record.
@@ -34,13 +36,34 @@ function clientTelemetryTag_(kind) {
   return 'client.' + ((typeof kind === 'string' && /^[a-zA-Z]{1,32}$/.test(kind)) ? kind : 'unknown');
 }
 
-/** Copies a record (then context) into a log payload, renaming GasLogger-stamped keys to client_<key>. */
+/** Keys only the server context may supply: a client could otherwise impersonate a visitor. */
+var CLIENT_TELEMETRY_WHO_KEYS_ = ['email', 'sub', 'visitor', 'anon', 'ip'];
+var CLIENT_TELEMETRY_MSG_MAX_ = 500;
+var CLIENT_TELEMETRY_STACK_MAX_ = 1200;
+var CLIENT_TELEMETRY_STRING_MAX_ = 500;
+var CLIENT_TELEMETRY_KEYS_MAX_ = 40;
+
+/**
+ * Builds the log payload. The record is untrusted: who keys are dropped, strings are clipped (msg 500,
+ * stack 1200, any other 500) and at most 40 keys are kept (id and kind first). Then the trusted context
+ * is merged on top. GasLogger-stamped keys are renamed client_<key> in both.
+ */
 function clientTelemetryData_(rec, context) {
   var data = {};
-  [rec, context].forEach(function (src) {
-    Object.keys(src || {}).forEach(function (k) {
-      data[CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1 ? k : 'client_' + k] = src[k];
-    });
+  var keys = Object.keys(rec || {}).filter(function (k) { return CLIENT_TELEMETRY_WHO_KEYS_.indexOf(k) === -1; });
+  keys = ['id', 'kind'].filter(function (k) { return keys.indexOf(k) !== -1; })
+    .concat(keys.filter(function (k) { return k !== 'id' && k !== 'kind'; }))
+    .slice(0, CLIENT_TELEMETRY_KEYS_MAX_);
+  keys.forEach(function (k) {
+    var v = rec[k];
+    if (typeof v === 'string') {
+      var max = k === 'msg' ? CLIENT_TELEMETRY_MSG_MAX_ : (k === 'stack' ? CLIENT_TELEMETRY_STACK_MAX_ : CLIENT_TELEMETRY_STRING_MAX_);
+      v = v.slice(0, max);
+    }
+    data[CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1 ? k : 'client_' + k] = v;
+  });
+  Object.keys(context || {}).forEach(function (k) {
+    data[CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1 ? k : 'client_' + k] = context[k];
   });
   return data;
 }

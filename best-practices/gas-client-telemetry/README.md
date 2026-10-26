@@ -24,8 +24,10 @@ when the server acknowledges it**.
 3. **Background flush:** if the queue is non-empty and nothing has carried it for 30 s, `flush()` sends
    a dedicated batch of up to 10 through `send()`. Backoff is 30/60/120/300 s (capped), reset by any
    ack. Also at page load and on the `online` event.
-4. **Beacon:** on `visibilitychange` hidden / `pagehide`, `flushOnHide()` beacons the newest 10. A
-   beacon has no response, so it never dequeues; the server dedupes the later re-send by id.
+4. **Beacon:** on `visibilitychange` hidden / `pagehide`, `flushOnHide()` beacons the newest 10 records
+   not yet beaconed (each record id is beaconed at most once per page session, kept in memory; a failed
+   beacon does not mark the id). A beacon has no response, so it never dequeues; the server dedupes the
+   later re-send by id.
 5. A transport failure calls `release()` (nothing dequeued). A failed flush **never captures a
    record**, otherwise a dead network would feed itself.
 
@@ -55,6 +57,9 @@ and a flush is scheduled. The server acks even when the carrier action is denied
 - `logPiggybackedClientTelemetry_(payload, context, opts)` returns ack ids, `null` when nothing was
   carried, `[]` on failure. `handleClientTelemetryPost_(payload, context, opts)` handles the dedicated
   action. `attachTelemetryAck_(response, ids)` merges the ack. None of them throws.
+- Records are untrusted. Before the context is merged the server strips client-supplied who keys
+  (`email`, `sub`, `visitor`, `anon`, `ip`), so only `context` supplies them, and clips: `msg` 500,
+  `stack` 1200, any other string field 500, at most 40 keys per record (`id`/`kind` kept first).
 - Batch capped at 25. Dedupe by `id` in `CacheService` for 6 h. A kind not matching
   `/^[a-zA-Z]{1,32}$/` is tagged `client.unknown`.
 - `context` is stamped on every logged record: pass your who-fields (visitor, ip, email only when a

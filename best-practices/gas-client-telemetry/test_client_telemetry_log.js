@@ -95,6 +95,30 @@ describe('carrier helpers', () => {
     assert.doesNotThrow(() => M.logPiggybackedClientTelemetry_({ telemetry: { records: [{ id: 'q' }] } }, {}, boom));
   });
 
+  test('review: client-supplied who keys are stripped; only the server context supplies them', () => {
+    const r = rig();
+    M.handleClientTelemetryBatch_([{ id: 'w1', kind: 'error', email: 'evil@x.org', sub: 's', visitor: 'fake', anon: 'a', ip: '1.2.3.4', msg: 'm' }], { visitor: 'real' }, r.opts);
+    const d = r.logged[0].data;
+    assert.equal(d.visitor, 'real');
+    ['email', 'sub', 'anon', 'ip'].forEach((k) => assert.equal(k in d, false, k));
+    assert.equal(d.msg, 'm');
+  });
+
+  test('review: server clips msg 500, stack 1200, other strings 500, and keeps at most 40 keys (id/kind first)', () => {
+    const r = rig();
+    const rec = { zzz: 'z', id: 'c1', kind: 'error', msg: 'm'.repeat(900), stack: 's'.repeat(2000), other: 'o'.repeat(900), n: 7 };
+    for (let i = 0; i < 60; i++) rec['k' + i] = i;
+    M.handleClientTelemetryBatch_([rec], {}, r.opts);
+    const d = r.logged[0].data;
+    assert.equal(d.msg.length, 500);
+    assert.equal(d.stack.length, 1200);
+    assert.equal(d.other.length, 500);
+    assert.equal(d.n, 7);
+    assert.equal(Object.keys(d).length, 40);
+    assert.equal(d.id, 'c1');
+    assert.equal(d.kind, 'error');
+  });
+
   test('handleClientTelemetryPost_ reads top-level records and acks', () => {
     const r = rig();
     const res = M.handleClientTelemetryPost_({ records: [{ id: 'h', kind: 'error' }] }, { visitor: 'v' }, r.opts);
