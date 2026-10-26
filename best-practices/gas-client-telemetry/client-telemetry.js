@@ -251,6 +251,7 @@ function createClientTelemetry(deps) {
         if (win.document && typeof win.document.addEventListener === 'function') {
           win.document.addEventListener('visibilitychange', function () {
             if (win.document.visibilityState === 'hidden') api.flushOnHide();
+            else if (win.document.visibilityState === 'visible') beaconed = {};   // back on screen: a later hide re-beacons
           });
         }
       } catch (e) { /* never throws */ }

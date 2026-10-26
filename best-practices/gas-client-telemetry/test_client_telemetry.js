@@ -240,4 +240,20 @@ describe('installGlobalHandlers', () => {
     w.dh.visibilitychange();
     assert.equal(r.beacons.length, 1);
   });
+
+  test('review3: becoming visible again clears the beaconed set, so hide -> visible -> pagehide re-beacons', () => {
+    const r = rig();
+    const w = fakeWin();
+    r.tel.installGlobalHandlers(w);
+    r.tel.capture('error', 'a', {});
+    w.document.visibilityState = 'hidden';
+    w.dh.visibilitychange();
+    assert.equal(r.beacons.length, 1);
+    w.h.pagehide();
+    assert.equal(r.beacons.length, 1, 'still hidden: beaconed once');
+    w.document.visibilityState = 'visible';
+    w.dh.visibilitychange();
+    w.h.pagehide();
+    assert.equal(r.beacons.length, 2, 'return then pagehide re-beacons');
+  });
 });

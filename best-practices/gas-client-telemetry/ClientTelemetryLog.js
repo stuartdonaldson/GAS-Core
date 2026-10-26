@@ -16,8 +16,8 @@
  * it sees an ack does not double-log. Every logged or already-seen id is acked; the client dequeues
  * exactly those. A key GasLogger stamps itself (version, env, op, parentOp, ts, tag) would be
  * overwritten or collide on the Axiom row, so it is renamed client_<key>. Client-supplied who keys
- * (email, sub, visitor, anon, ip) are stripped, and each record is clipped (msg 500, stack 1200, other
- * strings 500, 40 keys).
+ * (email, sub, visitor, anon, ip; any case) are stripped, and each record is clipped (msg 500, stack 1200, other
+ * strings 500, a non-string value whose JSON exceeds 500 chars becomes that JSON clipped to 500, 40 keys).
  *
  * The caller owns identity: pass the who-fields (visitor, ip, email...) as `context`; they are
  * stamped on every logged record.
@@ -49,18 +49,30 @@ var CLIENT_TELEMETRY_KEYS_MAX_ = 40;
  * is merged on top. GasLogger-stamped keys are renamed client_<key> in both.
  */
 function clientTelemetryData_(rec, context) {
-  var data = {};
-  var keys = Object.keys(rec || {}).filter(function (k) { return CLIENT_TELEMETRY_WHO_KEYS_.indexOf(k) === -1; });
+  var data = Object.create(null);   // no prototype: nothing inherited can masquerade as a who field
+  var keys = Object.keys(rec || {}).filter(function (k) {
+    return CLIENT_TELEMETRY_WHO_KEYS_.indexOf(k.toLowerCase()) === -1 && k !== '__proto__' && k !== 'constructor' && k !== 'prototype';
+  });
   keys = ['id', 'kind'].filter(function (k) { return keys.indexOf(k) !== -1; })
     .concat(keys.filter(function (k) { return k !== 'id' && k !== 'kind'; }))
     .slice(0, CLIENT_TELEMETRY_KEYS_MAX_);
+  var renamed = Object.create(null);
   keys.forEach(function (k) {
     var v = rec[k];
     if (typeof v === 'string') {
       var max = k === 'msg' ? CLIENT_TELEMETRY_MSG_MAX_ : (k === 'stack' ? CLIENT_TELEMETRY_STACK_MAX_ : CLIENT_TELEMETRY_STRING_MAX_);
       v = v.slice(0, max);
+    } else if (v !== null && v !== undefined) {
+      var json;
+      try { json = JSON.stringify(v); } catch (e) { json = '[unserializable]'; }
+      if (typeof json === 'string' && json.length > CLIENT_TELEMETRY_STRING_MAX_) v = json.slice(0, CLIENT_TELEMETRY_STRING_MAX_);
     }
-    data[CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1 ? k : 'client_' + k] = v;
+    if (CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1) {
+      if (!(k in renamed)) data[k] = v;   // a renamed reserved key (client_<key>) wins
+    } else {
+      data['client_' + k] = v;
+      renamed['client_' + k] = true;
+    }
   });
   Object.keys(context || {}).forEach(function (k) {
     data[CLIENT_TELEMETRY_RESERVED_KEYS_.indexOf(k) === -1 ? k : 'client_' + k] = context[k];

@@ -104,6 +104,18 @@ describe('carrier helpers', () => {
     assert.equal(d.msg, 'm');
   });
 
+  test('review3: __proto__/constructor/prototype record keys are skipped; no inherited who key can exist', () => {
+    const r = rig();
+    const rec = JSON.parse('{"id":"p1","kind":"error","msg":"m","__proto__":{"email":"x","visitor":"v","anon":"a","ip":"1.1.1.1"},"constructor":{"email":"y"},"prototype":{"email":"z"}}');
+    M.handleClientTelemetryBatch_([rec], { visitor: 'real' }, r.opts);
+    const d = r.logged[0].data;
+    ['email', 'anon', 'ip'].forEach((k) => assert.equal(d[k], undefined, k));
+    assert.equal(d.visitor, 'real');
+    assert.equal(Object.keys(d).some((k) => ['__proto__', 'constructor', 'prototype'].includes(k)), false);
+    assert.equal(Object.getPrototypeOf(d), null, 'null-prototype data object');
+    assert.equal(d.msg, 'm');
+  });
+
   test('review: server clips msg 500, stack 1200, other strings 500, and keeps at most 40 keys (id/kind first)', () => {
     const r = rig();
     const rec = { zzz: 'z', id: 'c1', kind: 'error', msg: 'm'.repeat(900), stack: 's'.repeat(2000), other: 'o'.repeat(900), n: 7 };
@@ -117,6 +129,20 @@ describe('carrier helpers', () => {
     assert.equal(Object.keys(d).length, 40);
     assert.equal(d.id, 'c1');
     assert.equal(d.kind, 'error');
+  });
+
+  test('review2: who keys stripped case-insensitively; big non-string values clipped to JSON 500; renamed reserved key wins', () => {
+    const r = rig();
+    const big = { a: 'x'.repeat(900) };
+    M.handleClientTelemetryBatch_([{ id: 'r2', kind: 'error', Email: 'e', VISITOR: 'v', Ip: 'i', Sub: 's', ANON: 'a', big, small: { a: 1 }, arr: new Array(300).fill(1234), ts: 'orig', client_ts: 'literal' }], { visitor: 'real' }, r.opts);
+    const d = r.logged[0].data;
+    ['Email', 'VISITOR', 'Ip', 'Sub', 'ANON'].forEach((k) => assert.equal(k in d, false, k));
+    assert.equal(d.visitor, 'real');
+    assert.equal(typeof d.big, 'string');
+    assert.equal(d.big, JSON.stringify(big).slice(0, 500));
+    assert.deepEqual(d.small, { a: 1 });
+    assert.equal(d.arr, JSON.stringify(new Array(300).fill(1234)).slice(0, 500));
+    assert.equal(d.client_ts, 'orig');
   });
 
   test('handleClientTelemetryPost_ reads top-level records and acks', () => {
