@@ -161,3 +161,72 @@ describe('carrier helpers', () => {
     assert.equal(M.attachTelemetryAck_(ok, null), ok);
   });
 });
+
+describe('ccy AC5/AC6: activity channel and fail-safe logging', () => {
+  test('activity tagged client.activity.<kind>; invalid kinds tagged unknown with clientKind clipped to 64; all logged and acked', () => {
+    const r = rig();
+    const recs = [
+      { id: 'a1', channel: 'activity', kind: 'nav' },
+      { id: 'a2', channel: 'activity', kind: 'bad.kind' },
+      { id: 'e1', kind: 'x'.repeat(100) },
+      { id: 'e2', channel: 'error', kind: 'error' },
+      { id: 'e3' },
+    ];
+    const res = M.handleClientTelemetryBatch_(recs, {}, r.opts);
+    assert.deepEqual(r.logged.map((l) => l.tag), ['client.activity.nav', 'client.activity.unknown', 'client.unknown', 'client.error', 'client.unknown']);
+    assert.deepEqual(res.ackIds, ['a1', 'a2', 'e1', 'e2', 'e3']);
+    assert.equal(res.logged, 5);
+    const d = r.logged.map((l) => l.data);
+    assert.equal('clientKind' in d[0], false);
+    assert.equal(d[1].clientKind, 'bad.kind');
+    assert.equal(d[2].clientKind, 'x'.repeat(64));
+    assert.equal('clientKind' in d[3], false);
+    assert.equal(d[4].clientKind, 'undefined');
+    const p = rig({ activityPrefix: 'pm.act.' });
+    M.handleClientTelemetryBatch_([{ id: 'a1', channel: 'activity', kind: 'nav' }, { id: 'e1', kind: 'error' }], {}, p.opts);
+    assert.deepEqual(p.logged.map((l) => l.tag), ['pm.act.nav', 'client.error']);
+  });
+
+  test('an unknown channel is logged as error channel with clientChannel', () => {
+    const r = rig();
+    const res = M.handleClientTelemetryBatch_([{ id: 'u1', channel: 'metrics', kind: 'tick' }, { id: 'u2', channel: 7, kind: 'error' }], {}, r.opts);
+    assert.deepEqual(r.logged.map((l) => l.tag), ['client.tick', 'client.error']);
+    assert.equal(r.logged[0].data.clientChannel, 'metrics');
+    assert.equal(r.logged[1].data.clientChannel, '7');
+    assert.deepEqual(res.ackIds, ['u1', 'u2']);
+  });
+
+  test('opts.validate adds schemaMismatch, never blocks logging; a throwing validator is ignored', () => {
+    const calls = [];
+    const r = rig({ validate: (kind, rec) => { calls.push([kind, rec.id]); return rec.id === 'v1' ? ['trackId', 'ms'] : []; } });
+    const res = M.handleClientTelemetryBatch_([{ id: 'v1', channel: 'activity', kind: 'play' }, { id: 'v2', kind: 'error' }], {}, r.opts);
+    assert.deepEqual(calls, [['play', 'v1'], ['error', 'v2']]);
+    assert.equal(r.logged[0].data.schemaMismatch, 'trackId,ms');
+    assert.equal('schemaMismatch' in r.logged[1].data, false);
+    assert.deepEqual(res.ackIds, ['v1', 'v2']);
+    const t = rig({ validate() { throw new Error('bad validator'); } });
+    const res2 = M.handleClientTelemetryBatch_([{ id: 't1', channel: 'activity', kind: 'play' }], {}, t.opts);
+    assert.equal(t.logged.length, 1);
+    assert.equal('schemaMismatch' in t.logged[0].data, false);
+    assert.deepEqual(res2.ackIds, ['t1']);
+  });
+
+  test('activity records get the same dedupe, who-key stripping and clipping', () => {
+    const r = rig();
+    const rec = { id: 'd1', channel: 'activity', kind: 'nav', email: 'x@y', visitor: 'fake', msg: 'm'.repeat(900) };
+    const res = M.handleClientTelemetryBatch_([rec, rec], { visitor: 'real' }, r.opts);
+    assert.equal(r.logged.length, 1);
+    assert.deepEqual(res.ackIds, ['d1', 'd1']);
+    const d = r.logged[0].data;
+    assert.equal(d.visitor, 'real');
+    assert.equal('email' in d, false);
+    assert.equal(d.msg.length, 500);
+    M.handleClientTelemetryBatch_([rec], {}, r.opts);
+    assert.equal(r.logged.length, 1, 'deduped by id');
+  });
+
+  test('a throwing log leaves an activity record un-acked (the only non-ack path)', () => {
+    const bad = rig({ log() { throw new Error('sink down'); } });
+    assert.deepEqual(M.handleClientTelemetryBatch_([{ id: 'z', channel: 'activity', kind: 'nav' }], {}, bad.opts).ackIds, []);
+  });
+});
